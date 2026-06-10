@@ -48,7 +48,10 @@ class AppConfig:
     default_language: str = "Auto"
     korean_speaker: str = "Sohee"
     english_speaker: str = "Ryan"
-    default_instruct: str = "Calm, professional interview tone."
+    default_instruct: str = (
+        "Use a calm, courteous, professional interviewer voice. "
+        "Keep a steady, slightly slower pace with neutral emotion and clear pronunciation."
+    )
     device_map: str = "cuda:0"
     torch_dtype: str = "bfloat16"
     use_flash_attention: bool = False
@@ -70,3 +73,6 @@ class AppConfig:
     def ensure_directories(self) -> None:
         self.sessions_root.mkdir(parents=True, exist_ok=True)
         self.model_root.mkdir(parents=True, exist_ok=True)
+
+    def supports_style_instruction(self) -> bool:
+        return "1.7B" in self.model_id

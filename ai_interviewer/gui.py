@@ -32,12 +32,15 @@ class InterviewApp(tk.Tk):
         self.config_model.ensure_directories()
         self.engine: InterviewEngine | None = None
         self.provider: QwenTTSProvider | None = None
+        self.preload_provider: QwenTTSProvider | None = None
+        self.preload_running = False
         self.tts_token = 0
         self.tts_running = False
 
         self._build_variables()
         self._build_ui()
         self._set_session_controls(False)
+        self.after(500, self._preload_tts_model)
         self.after(250, self._update_timers)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -233,6 +236,8 @@ class InterviewApp(tk.Tk):
         if path:
             self.model_root_var.set(path)
             self.provider = None
+            if self.engine is None:
+                self._preload_tts_model()
 
     def _start_session(self) -> None:
         questions = parse_questions(self.question_text.get("1.0", "end"))
@@ -256,6 +261,43 @@ class InterviewApp(tk.Tk):
         self.config_model.korean_speaker = self.korean_speaker_var.get().strip() or "Sohee"
         self.config_model.english_speaker = self.english_speaker_var.get().strip() or "Ryan"
         self.config_model.ensure_directories()
+
+    def _preload_tts_model(self) -> None:
+        if self.preload_running:
+            return
+        self._apply_config_from_ui()
+        if self.config_model.tts_backend != QWEN_BACKEND:
+            return
+
+        self.preload_running = True
+        self.status_var.set("Qwen3-TTS 모델을 미리 로딩 중입니다...")
+        cache_dir = self.config_model.sessions_root / "_preload"
+        provider = QwenTTSProvider(self.config_model, cache_dir)
+        self.preload_provider = provider
+
+        def worker() -> None:
+            try:
+                provider.preload()
+            except Exception as exc:
+                self.after(0, lambda: self._on_preload_error(exc))
+                return
+            self.after(0, self._on_preload_done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_preload_done(self) -> None:
+        self.preload_running = False
+        if self.engine is None:
+            if self.config_model.supports_style_instruction():
+                self.status_var.set("Qwen3-TTS 모델 준비 완료. 면접관 말투 지시가 적용됩니다.")
+            else:
+                self.status_var.set("Qwen3-TTS 0.6B 준비 완료. 말투 지시는 1.7B 모델에서 적용됩니다.")
+
+    def _on_preload_error(self, exc: Exception) -> None:
+        self.preload_running = False
+        if self.engine is None:
+            self.status_var.set("Qwen3-TTS 모델 로딩 실패. TTS 진단을 확인하세요.")
+            messagebox.showwarning("Qwen3-TTS preload", str(exc))
 
     def _render_current_question(self) -> None:
         if self.engine is None:
@@ -309,7 +351,7 @@ class InterviewApp(tk.Tk):
 
     def _show_slow_tts_notice(self, token: int) -> None:
         if token == self.tts_token and self.tts_running:
-            self.status_var.set("TTS 생성 중입니다. 첫 실행은 모델 로딩 때문에 몇 분 걸릴 수 있습니다.")
+            self.status_var.set("Qwen3-TTS 생성 중입니다. 모델이 아직 준비 중이면 첫 질문은 조금 걸릴 수 있습니다.")
 
     def _on_tts_done(self, token: int, wav_path: Path) -> None:
         if token != self.tts_token:

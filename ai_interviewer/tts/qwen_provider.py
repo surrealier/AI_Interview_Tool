@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import importlib.util
+import io
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +20,36 @@ class TTSProviderError(RuntimeError):
     pass
 
 
+@contextlib.contextmanager
+def _suppress_noisy_native_output():
+    stdout_fd = stderr_fd = None
+    devnull_fd = None
+    try:
+        try:
+            stdout_fd = os.dup(1)
+            stderr_fd = os.dup(2)
+            devnull_fd = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull_fd, 1)
+            os.dup2(devnull_fd, 2)
+        except OSError:
+            stdout_fd = stderr_fd = devnull_fd = None
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            yield
+    finally:
+        if stdout_fd is not None:
+            os.dup2(stdout_fd, 1)
+            os.close(stdout_fd)
+        if stderr_fd is not None:
+            os.dup2(stderr_fd, 2)
+            os.close(stderr_fd)
+        if devnull_fd is not None:
+            os.close(devnull_fd)
+
+
 class QwenTTSProvider:
+    _cache_lock = threading.Lock()
+    _model_cache: dict[tuple[str, str, str, str], Any] = {}
+
     def __init__(self, config: AppConfig, cache_dir: Path):
         self.config = config
         self.cache_dir = Path(cache_dir)
@@ -25,6 +57,10 @@ class QwenTTSProvider:
         self._model: Any | None = None
         self._last_backend = "qwen3-tts"
         self._last_warning = ""
+
+    def preload(self) -> None:
+        if self.config.tts_backend == QWEN_BACKEND:
+            self._load_model()
 
     def resolve_voice(self, text: str) -> tuple[str, str]:
         language = self.config.default_language
@@ -90,13 +126,14 @@ class QwenTTSProvider:
     def _synthesize_with_qwen(self, wav_path: Path, text: str, language: str, speaker: str) -> Path:
         model = self._load_model()
         try:
-            wavs, sample_rate = model.generate_custom_voice(
-                text=text,
-                language=language,
-                speaker=speaker,
-                instruct=self.config.default_instruct,
-                max_new_tokens=self.config.max_new_tokens,
-            )
+            with _suppress_noisy_native_output():
+                wavs, sample_rate = model.generate_custom_voice(
+                    text=text,
+                    language=language,
+                    speaker=speaker,
+                    instruct=self._style_instruction(),
+                    max_new_tokens=self.config.max_new_tokens,
+                )
         except Exception as exc:  # pragma: no cover - depends on external model runtime
             raise TTSProviderError(f"Qwen3-TTS generation failed: {exc}") from exc
 
@@ -162,17 +199,35 @@ class QwenTTSProvider:
                 results.append(f"CUDA: {cuda_state} {cuda_name}".strip())
             except Exception as exc:
                 results.append(f"CUDA check: ERROR - {exc}")
+        if self.config.tts_backend == QWEN_BACKEND:
+            tone_state = "ON" if self.config.supports_style_instruction() else "IGNORED by 0.6B model"
+            results.append(f"Interviewer tone instruction: {tone_state}")
         results.append(f"Selected backend: {self.config.tts_backend}")
         results.append(f"Windows SAPI fallback: {'ON' if self.config.enable_windows_sapi_fallback else 'OFF'}")
         return results
+
+    def _style_instruction(self) -> str | None:
+        if not self.config.supports_style_instruction():
+            return None
+        return self.config.default_instruct
 
     def _load_model(self) -> Any:
         if self._model is not None:
             return self._model
 
+        source = self.config.model_source()
+        attention = "flash_attention_2" if self.config.use_flash_attention else "sdpa"
+        cache_key = (source, self.config.device_map, self.config.torch_dtype, attention)
+        with self._cache_lock:
+            cached = self._model_cache.get(cache_key)
+            if cached is not None:
+                self._model = cached
+                return self._model
+
         try:
-            import torch
-            from qwen_tts import Qwen3TTSModel
+            with _suppress_noisy_native_output():
+                import torch
+                from qwen_tts import Qwen3TTSModel
         except ImportError as exc:  # pragma: no cover - dependency error path
             raise TTSProviderError(
                 "Missing Qwen3-TTS runtime in this Python environment. "
@@ -180,25 +235,38 @@ class QwenTTSProvider:
             ) from exc
 
         dtype = getattr(torch, self.config.torch_dtype, torch.bfloat16)
-        source = self.config.model_source()
-        attention = "flash_attention_2" if self.config.use_flash_attention else "sdpa"
 
         try:
-            self._model = Qwen3TTSModel.from_pretrained(
-                source,
-                device_map=self.config.device_map,
-                dtype=dtype,
-                attn_implementation=attention,
-            )
-        except Exception as first_exc:  # pragma: no cover - depends on external model runtime
-            if attention == "flash_attention_2":
-                try:
+            with self._cache_lock:
+                cached = self._model_cache.get(cache_key)
+                if cached is not None:
+                    self._model = cached
+                    return self._model
+                with _suppress_noisy_native_output():
                     self._model = Qwen3TTSModel.from_pretrained(
                         source,
                         device_map=self.config.device_map,
                         dtype=dtype,
-                        attn_implementation="sdpa",
+                        attn_implementation=attention,
                     )
+                self._model_cache[cache_key] = self._model
+        except Exception as first_exc:  # pragma: no cover - depends on external model runtime
+            if attention == "flash_attention_2":
+                try:
+                    fallback_key = (source, self.config.device_map, self.config.torch_dtype, "sdpa")
+                    with self._cache_lock:
+                        cached = self._model_cache.get(fallback_key)
+                        if cached is not None:
+                            self._model = cached
+                            return self._model
+                        with _suppress_noisy_native_output():
+                            self._model = Qwen3TTSModel.from_pretrained(
+                                source,
+                                device_map=self.config.device_map,
+                                dtype=dtype,
+                                attn_implementation="sdpa",
+                            )
+                        self._model_cache[fallback_key] = self._model
                     return self._model
                 except Exception:
                     pass

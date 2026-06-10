@@ -35,6 +35,15 @@ python -m pip install -r requirements-qwen.txt
 
 CUDA용 PyTorch 설치가 별도로 필요할 수 있습니다. 사용 중인 CUDA 버전에 맞는 PyTorch 설치 명령은 PyTorch 공식 설치 페이지 기준으로 적용하세요.
 
+현재 개발 PC처럼 conda 환경을 이미 쓰는 경우에는 `.venv`를 만들지 말고 해당 환경에서 바로 실행하세요.
+
+```cmd
+conda activate torch251
+cd /d C:\bongkj\Projects\AI_Interview
+python -m pip install -r requirements-qwen.txt
+pythonw -m ai_interviewer
+```
+
 모델 가중치는 EXE에 포함하지 않습니다. 기본 위치는 프로젝트 또는 배포 폴더의 `models/`입니다.
 
 ```powershell
@@ -54,6 +63,12 @@ models/
   Qwen3-TTS-Tokenizer-12Hz/
   Qwen3-TTS-12Hz-0.6B-CustomVoice/
 ```
+
+### 면접관 말투
+
+앱은 1.7B CustomVoice 모델을 사용할 때 정중하고 차분한 면접관 톤 지시문을 함께 전달합니다. 0.6B CustomVoice 모델은 `qwen_tts` 런타임에서 style instruction을 무시하므로, 로컬에 0.6B만 있으면 Sohee의 기본 한국어 음성으로 재생됩니다. 말투 제어가 필요하면 1.7B 모델을 다운로드한 뒤 앱의 `모델`에서 `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`를 선택하세요.
+
+`qwen_tts` 패키지를 CMD에서 직접 import하면 SoX 경고가 출력될 수 있습니다. 앱 내부의 Qwen import/generation 경로에서는 이 경고를 숨기며, 콘솔 없는 실행은 `pythonw -m ai_interviewer`를 권장합니다. 패키지 자체 경고까지 없애려면 SoX를 PATH에 설치하세요.
 
 ## 실행
 
