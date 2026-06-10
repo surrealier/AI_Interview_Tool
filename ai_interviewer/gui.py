@@ -42,7 +42,7 @@ class InterviewApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_variables(self) -> None:
-        self.tts_backend_var = tk.StringVar(value=WINDOWS_SAPI_BACKEND)
+        self.tts_backend_var = tk.StringVar(value=QWEN_BACKEND)
         self.model_var = tk.StringVar(value=DEFAULT_MODEL_ID)
         self.model_root_var = tk.StringVar(value=str(self.config_model.model_root))
         self.language_var = tk.StringVar(value="Auto")

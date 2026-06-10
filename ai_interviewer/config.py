@@ -15,7 +15,7 @@ WINDOWS_SAPI_BACKEND = "Windows 기본 음성"
 QWEN_BACKEND = "Qwen3-TTS"
 
 SUPPORTED_MODEL_IDS = (DEFAULT_MODEL_ID, LARGE_MODEL_ID)
-SUPPORTED_TTS_BACKENDS = (WINDOWS_SAPI_BACKEND, QWEN_BACKEND)
+SUPPORTED_TTS_BACKENDS = (QWEN_BACKEND, WINDOWS_SAPI_BACKEND)
 
 
 def application_base_dir() -> Path:
@@ -41,7 +41,7 @@ def model_dir_name(model_id: str) -> str:
 
 @dataclass(slots=True)
 class AppConfig:
-    tts_backend: str = WINDOWS_SAPI_BACKEND
+    tts_backend: str = QWEN_BACKEND
     model_id: str = DEFAULT_MODEL_ID
     model_root: Path = field(default_factory=lambda: application_base_dir() / "models")
     sessions_root: Path = field(default_factory=default_sessions_root)
@@ -50,9 +50,9 @@ class AppConfig:
     english_speaker: str = "Ryan"
     default_instruct: str = "Calm, professional interview tone."
     device_map: str = "cuda:0"
-    torch_dtype: str = "bfloat16"
-    use_flash_attention: bool = True
-    max_new_tokens: int = 2048
+    torch_dtype: str = "float16"
+    use_flash_attention: bool = False
+    max_new_tokens: int = 1024
     enable_windows_sapi_fallback: bool = True
 
     def local_model_dir(self) -> Path:
