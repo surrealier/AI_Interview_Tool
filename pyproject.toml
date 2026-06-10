@@ -1,0 +1,9 @@
+[project]
+name = "ai-interviewer"
+version = "0.1.0"
+description = "Local Python desktop app for AI interview practice with Qwen3-TTS."
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

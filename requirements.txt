@@ -1,0 +1,2 @@
+# Runtime dependencies for the default Windows TTS backend.
+# The app uses only the Python standard library by default.
