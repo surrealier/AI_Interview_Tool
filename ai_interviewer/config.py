@@ -50,9 +50,9 @@ class AppConfig:
     english_speaker: str = "Ryan"
     default_instruct: str = "Calm, professional interview tone."
     device_map: str = "cuda:0"
-    torch_dtype: str = "float16"
+    torch_dtype: str = "bfloat16"
     use_flash_attention: bool = False
-    max_new_tokens: int = 1024
+    max_new_tokens: int = 8192
     enable_windows_sapi_fallback: bool = True
 
     def local_model_dir(self) -> Path:

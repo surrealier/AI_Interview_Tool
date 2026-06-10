@@ -118,5 +118,5 @@ python -c "import torch, qwen_tts, soundfile; print('cuda=', torch.cuda.is_avail
 ```cmd
 cd /d C:\bongkj\Projects\AI_Interview
 python -m pip install -r requirements-qwen.txt
-python -c "import qwen_tts, soundfile, torch; print('qwen ok, cuda=', torch.cuda.is_available())"
+python -c "import qwen_tts, soundfile, torch, huggingface_hub; print('qwen ok, cuda=', torch.cuda.is_available(), 'hub=', huggingface_hub.__version__)"
 ```
