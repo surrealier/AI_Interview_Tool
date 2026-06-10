@@ -110,6 +110,13 @@ CMD에서 빠르게 의존성을 확인하려면:
 
 ```cmd
 cd /d C:\bongkj\Projects\AI_Interview
-call .venv\Scripts\activate.bat
 python -c "import torch, qwen_tts, soundfile; print('cuda=', torch.cuda.is_available())"
+```
+
+위 명령이 실패하면 현재 앱을 실행하는 Python 환경에 Qwen 의존성이 없는 것입니다. 같은 CMD/conda 환경에서 다음을 실행하세요.
+
+```cmd
+cd /d C:\bongkj\Projects\AI_Interview
+python -m pip install -r requirements-qwen.txt
+python -c "import qwen_tts, soundfile, torch; print('qwen ok, cuda=', torch.cuda.is_available())"
 ```

@@ -146,6 +146,7 @@ class QwenTTSProvider:
         results: list[str] = []
         model_dir = self.config.local_model_dir()
         tokenizer_dir = self.config.local_tokenizer_dir()
+        results.append(f"Python executable: {sys.executable}")
         results.append(f"Model folder: {'OK' if model_dir.exists() else 'MISSING'} - {model_dir}")
         results.append(f"Tokenizer folder: {'OK' if tokenizer_dir.exists() else 'MISSING'} - {tokenizer_dir}")
         results.append(f"qwen_tts package: {'OK' if importlib.util.find_spec('qwen_tts') else 'MISSING'}")
@@ -174,7 +175,8 @@ class QwenTTSProvider:
             from qwen_tts import Qwen3TTSModel
         except ImportError as exc:  # pragma: no cover - dependency error path
             raise TTSProviderError(
-                "Missing Qwen3-TTS runtime. Install dependencies with requirements.txt first."
+                "Missing Qwen3-TTS runtime in this Python environment. "
+                "Run: python -m pip install -r requirements-qwen.txt"
             ) from exc
 
         dtype = getattr(torch, self.config.torch_dtype, torch.bfloat16)
