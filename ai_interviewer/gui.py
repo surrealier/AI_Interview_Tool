@@ -21,6 +21,48 @@ from ai_interviewer.question_parser import parse_questions
 from ai_interviewer.tts.qwen_provider import QwenTTSProvider
 
 
+DEFAULT_QUESTIONS = """1. 자기소개를 해주세요.
+2. 이 직무에 지원한 이유를 말씀해 주세요.
+3. 우리 회사에 관심을 갖게 된 계기는 무엇인가요?
+4. 본인의 가장 큰 강점은 무엇인가요?
+5. 본인의 약점과 이를 개선하기 위해 노력한 점을 말씀해 주세요.
+6. 최근 가장 큰 성취 경험을 설명해 주세요.
+7. 실패했던 경험과 그 경험에서 배운 점을 말씀해 주세요.
+8. 팀으로 일하면서 갈등을 겪었던 경험이 있나요?
+9. 갈등 상황에서 본인은 보통 어떤 방식으로 해결하나요?
+10. 빠듯한 일정이나 압박이 있는 상황을 어떻게 관리하나요?
+11. 피드백을 받았을 때 어떻게 받아들이고 적용하나요?
+12. 새로운 환경에 적응했던 경험을 말씀해 주세요.
+13. 본인이 중요하게 생각하는 직업적 가치는 무엇인가요?
+14. 리더십을 발휘했던 경험이 있다면 설명해 주세요.
+15. 다른 사람을 설득했던 경험을 말씀해 주세요.
+16. 업무 우선순위가 충돌할 때 어떻게 판단하나요?
+17. 윤리적으로 고민되는 상황을 겪은 적이 있다면 어떻게 대응했나요?
+18. 입사 후 1년 동안 어떤 성과를 내고 싶나요?
+19. 3년 뒤 본인은 어떤 모습이길 기대하나요?
+20. 마지막으로 본인을 채용해야 하는 이유를 말씀해 주세요.
+1. Please introduce yourself.
+2. Why are you applying for this role?
+3. What made you interested in our company?
+4. What is your greatest strength?
+5. What is one weakness you are working to improve?
+6. Tell me about a recent achievement you are proud of.
+7. Tell me about a failure and what you learned from it.
+8. Have you experienced conflict while working on a team?
+9. How do you usually resolve conflicts at work?
+10. How do you manage tight deadlines or pressure?
+11. How do you receive and apply feedback?
+12. Tell me about a time you adapted to a new environment.
+13. What professional values are most important to you?
+14. Describe a time when you showed leadership.
+15. Tell me about a time you persuaded someone.
+16. How do you decide when priorities conflict?
+17. How have you handled an ethical dilemma?
+18. What impact would you like to make in your first year here?
+19. Where do you see yourself in three years?
+20. Why should we hire you?"""
+
+
 class InterviewApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -83,12 +125,7 @@ class InterviewApp(tk.Tk):
         text_scroll = ttk.Scrollbar(input_frame, orient="vertical", command=self.question_text.yview)
         text_scroll.grid(row=0, column=1, sticky="ns")
         self.question_text.configure(yscrollcommand=text_scroll.set)
-        self.question_text.insert(
-            "1.0",
-            "1. 자기소개를 해주세요.\n"
-            "1.2. 가장 자신 있는 프로젝트를 설명해주세요.\n"
-            "Q3. What is your biggest strength?\n",
-        )
+        self.question_text.insert("1.0", DEFAULT_QUESTIONS)
 
         input_buttons = ttk.Frame(input_frame)
         input_buttons.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
