@@ -4,7 +4,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
 hiddenimports = []
-for package in ("qwen_tts", "transformers", "tokenizers", "soundfile"):
+for package in ("qwen_tts", "transformers", "tokenizers", "soundfile", "cv2", "PIL", "sounddevice", "faster_whisper"):
     try:
         hiddenimports += collect_submodules(package)
     except Exception:
@@ -12,6 +12,7 @@ for package in ("qwen_tts", "transformers", "tokenizers", "soundfile"):
 
 datas = [
     ("README.md", "."),
+    ("assets/.gitkeep", "assets"),
 ]
 try:
     datas += collect_data_files("qwen_tts", include_py_files=False)

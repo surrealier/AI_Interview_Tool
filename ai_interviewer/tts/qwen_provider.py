@@ -276,7 +276,10 @@ class QwenTTSProvider:
 
     def _cache_path(self, cache_key: str, text: str, language: str, speaker: str) -> Path:
         digest = hashlib.sha256(
-            f"{self.config.model_id}|{language}|{speaker}|{text}|{cache_key}".encode("utf-8")
+            (
+                f"{self.config.model_id}|{language}|{speaker}|{self._style_instruction()}|"
+                f"{self.config.max_new_tokens}|{text}|{cache_key}"
+            ).encode("utf-8")
         ).hexdigest()[:20]
         safe_speaker = "".join(ch if ch.isalnum() else "_" for ch in speaker)
         return self.cache_dir / f"{digest}_{language}_{safe_speaker}.wav"

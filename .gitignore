@@ -14,3 +14,7 @@ models/
 *.log
 *.wav
 *.mp3
+*.mp4
+*.avi
+*.mov
+*.mkv

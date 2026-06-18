@@ -35,6 +35,10 @@ def default_sessions_root() -> Path:
     return documents_dir() / APP_NAME / "sessions"
 
 
+def default_video_path() -> Path:
+    return application_base_dir() / "assets" / "interviewer.mp4"
+
+
 def model_dir_name(model_id: str) -> str:
     return model_id.rsplit("/", 1)[-1]
 
@@ -45,6 +49,7 @@ class AppConfig:
     model_id: str = DEFAULT_MODEL_ID
     model_root: Path = field(default_factory=lambda: application_base_dir() / "models")
     sessions_root: Path = field(default_factory=default_sessions_root)
+    video_path: Path = field(default_factory=default_video_path)
     default_language: str = "Auto"
     korean_speaker: str = "Sohee"
     english_speaker: str = "Ryan"
@@ -57,6 +62,9 @@ class AppConfig:
     use_flash_attention: bool = False
     max_new_tokens: int = 8192
     enable_windows_sapi_fallback: bool = True
+    stt_model_size: str = "small"
+    stt_device: str = "cuda"
+    stt_compute_type: str = "float16"
 
     def local_model_dir(self) -> Path:
         return self.model_root / model_dir_name(self.model_id)
@@ -76,3 +84,9 @@ class AppConfig:
 
     def supports_style_instruction(self) -> bool:
         return "1.7B" in self.model_id
+
+    def preferred_model_id(self) -> str:
+        large_model_dir = self.model_root / model_dir_name(LARGE_MODEL_ID)
+        if large_model_dir.exists():
+            return LARGE_MODEL_ID
+        return self.model_id

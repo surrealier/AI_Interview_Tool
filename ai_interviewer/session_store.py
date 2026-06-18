@@ -24,6 +24,10 @@ EXPORT_FIELDS = [
     "answer_started_at",
     "answer_finished_at",
     "answer_seconds",
+    "answer_audio_path",
+    "transcript",
+    "follow_up_question",
+    "follow_up_generated_at",
     "repeat_count",
     "memo",
 ]
@@ -50,6 +54,10 @@ class QuestionRecord:
     answer_started_at: str = ""
     answer_finished_at: str = ""
     answer_seconds: float | None = None
+    answer_audio_path: str = ""
+    transcript: str = ""
+    follow_up_question: str = ""
+    follow_up_generated_at: str = ""
     repeat_count: int = 0
     memo: str = ""
     _answer_start_monotonic: float | None = field(default=None, repr=False)
@@ -67,6 +75,10 @@ class QuestionRecord:
             "answer_started_at": self.answer_started_at,
             "answer_finished_at": self.answer_finished_at,
             "answer_seconds": "" if self.answer_seconds is None else round(self.answer_seconds, 3),
+            "answer_audio_path": self.answer_audio_path,
+            "transcript": self.transcript,
+            "follow_up_question": self.follow_up_question,
+            "follow_up_generated_at": self.follow_up_generated_at,
             "repeat_count": self.repeat_count,
             "memo": self.memo,
         }
@@ -104,6 +116,10 @@ class InterviewSession:
     def audio_cache_dir(self) -> Path:
         return self.session_dir / "audio_cache"
 
+    @property
+    def answers_dir(self) -> Path:
+        return self.session_dir / "answers"
+
     def elapsed_seconds(self) -> float:
         return time.monotonic() - self._created_monotonic
 
@@ -140,12 +156,27 @@ class InterviewSession:
     def set_memo(self, zero_based_index: int, memo: str) -> None:
         self.record_at(zero_based_index).memo = memo.strip()
 
+    def set_answer_audio_path(self, zero_based_index: int, path: Path) -> None:
+        self.record_at(zero_based_index).answer_audio_path = str(path)
+
+    def set_transcript(self, zero_based_index: int, transcript: str) -> None:
+        self.record_at(zero_based_index).transcript = transcript.strip()
+
+    def set_follow_up_question(self, zero_based_index: int, question: str) -> None:
+        record = self.record_at(zero_based_index)
+        value = question.strip()
+        if value == record.follow_up_question:
+            return
+        record.follow_up_question = value
+        record.follow_up_generated_at = now_iso() if value else ""
+
     def export_rows(self) -> list[dict[str, Any]]:
         return [record.export_row(self.session_id) for record in self.records]
 
     def save(self) -> None:
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self.audio_cache_dir.mkdir(parents=True, exist_ok=True)
+        self.answers_dir.mkdir(parents=True, exist_ok=True)
         rows = self.export_rows()
 
         json_path = self.session_dir / "session.json"
