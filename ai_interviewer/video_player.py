@@ -16,7 +16,10 @@ class InterviewerVideoPlayer:
         self._photo: Any | None = None
         self._cv2: Any | None = None
         self._image: Any | None = None
+        self._image_draw: Any | None = None
         self._image_tk: Any | None = None
+        self._synthetic_mode = False
+        self._synthetic_frame = 0
 
         self.frame = ttk.Frame(parent)
         self.frame.columnconfigure(0, weight=1)
@@ -45,6 +48,12 @@ class InterviewerVideoPlayer:
         if self._running:
             return
         if self.video_path is None or not self.video_path.exists():
+            if self._load_image_dependencies():
+                self._running = True
+                self._synthetic_mode = True
+                self._synthetic_frame = 0
+                self._tick_synthetic()
+                return
             self._show_placeholder("영상 파일 없음\nassets/interviewer.mp4 또는 영상 파일을 선택하세요.")
             return
         if not self._load_dependencies():
@@ -58,10 +67,12 @@ class InterviewerVideoPlayer:
             return
 
         self._running = True
+        self._synthetic_mode = False
         self._tick()
 
     def stop(self) -> None:
         self._running = False
+        self._synthetic_mode = False
         self._release_capture()
         self._show_placeholder("면접관 영상 대기")
 
@@ -89,17 +100,98 @@ class InterviewerVideoPlayer:
 
         self.label.after(33, self._tick)
 
+    def _tick_synthetic(self) -> None:
+        if not self._running or not self._synthetic_mode:
+            return
+
+        frame = self._synthetic_frame
+        self._synthetic_frame += 1
+        image = self._image.new("RGB", (self.width, self.height), (26, 29, 33))
+        draw = self._image_draw.Draw(image)
+
+        center_x = self.width // 2
+        head_top = int(self.height * 0.16)
+        head_bottom = int(self.height * 0.58)
+        face_color = (226, 188, 156)
+        hair_color = (42, 35, 32)
+        suit_color = (43, 55, 73)
+        shirt_color = (238, 241, 244)
+        tie_color = (96, 54, 54)
+
+        draw.rectangle((0, 0, self.width, self.height), fill=(25, 28, 32))
+        draw.ellipse((center_x - 84, head_top - 20, center_x + 84, head_top + 70), fill=hair_color)
+        draw.ellipse((center_x - 72, head_top, center_x + 72, head_bottom), fill=face_color)
+        draw.polygon(
+            (
+                (center_x - 170, self.height),
+                (center_x - 88, int(self.height * 0.58)),
+                (center_x + 88, int(self.height * 0.58)),
+                (center_x + 170, self.height),
+            ),
+            fill=suit_color,
+        )
+        draw.polygon(
+            (
+                (center_x - 54, int(self.height * 0.62)),
+                (center_x, int(self.height * 0.78)),
+                (center_x + 54, int(self.height * 0.62)),
+            ),
+            fill=shirt_color,
+        )
+        draw.polygon(
+            (
+                (center_x - 13, int(self.height * 0.64)),
+                (center_x + 13, int(self.height * 0.64)),
+                (center_x + 20, int(self.height * 0.94)),
+                (center_x, int(self.height * 0.99)),
+                (center_x - 20, int(self.height * 0.94)),
+            ),
+            fill=tie_color,
+        )
+
+        eye_y = int(self.height * 0.36)
+        draw.ellipse((center_x - 38, eye_y, center_x - 26, eye_y + 8), fill=(22, 22, 22))
+        draw.ellipse((center_x + 26, eye_y, center_x + 38, eye_y + 8), fill=(22, 22, 22))
+        draw.arc((center_x - 45, eye_y - 18, center_x - 20, eye_y + 5), start=200, end=340, fill=(72, 48, 40), width=2)
+        draw.arc((center_x + 20, eye_y - 18, center_x + 45, eye_y + 5), start=200, end=340, fill=(72, 48, 40), width=2)
+
+        mouth_phase = frame % 18
+        mouth_height = 6 + (10 if 4 <= mouth_phase <= 12 else 0)
+        mouth_y = int(self.height * 0.48)
+        draw.rounded_rectangle(
+            (center_x - 30, mouth_y, center_x + 30, mouth_y + mouth_height),
+            radius=mouth_height // 2,
+            fill=(88, 32, 38),
+        )
+        if mouth_height > 8:
+            draw.rectangle((center_x - 20, mouth_y + 1, center_x + 20, mouth_y + 4), fill=(244, 232, 220))
+
+        self._photo = self._image_tk.PhotoImage(image)
+        self.label.configure(image=self._photo, text="")
+        self.label.after(80, self._tick_synthetic)
+
     def _load_dependencies(self) -> bool:
         if self._cv2 is not None:
             return True
         try:
             import cv2
-            from PIL import Image, ImageTk
         except ImportError:
+            return False
+        if not self._load_image_dependencies():
             return False
 
         self._cv2 = cv2
+        return True
+
+    def _load_image_dependencies(self) -> bool:
+        if self._image is not None:
+            return True
+        try:
+            from PIL import Image, ImageDraw, ImageTk
+        except ImportError:
+            return False
         self._image = Image
+        self._image_draw = ImageDraw
         self._image_tk = ImageTk
         return True
 

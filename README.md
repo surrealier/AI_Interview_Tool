@@ -88,7 +88,7 @@ python -m pip install -r requirements-interactive.txt
 assets/interviewer.mp4
 ```
 
-영상 파일은 저장소에 포함하지 않습니다. 앱의 `영상 파일` 설정에서 `.mp4`, `.avi`, `.mov`, `.mkv` 파일을 직접 선택할 수 있습니다. 영상은 TTS 또는 꼬리질문 TTS가 재생되는 동안 반복 재생됩니다.
+영상 파일은 저장소에 포함하지 않습니다. 앱의 `영상 파일` 설정에서 `.mp4`, `.avi`, `.mov`, `.mkv` 파일을 직접 선택할 수 있습니다. 영상은 TTS 또는 꼬리질문 TTS가 재생되는 동안 반복 재생됩니다. 영상 파일이 없으면 내장 면접관 애니메이션을 대신 재생합니다.
 
 STT는 `faster-whisper`를 사용합니다. 기본 모델은 `small`, 기본 장치는 `cuda`, compute type은 `float16`입니다. GPU 메모리가 부족하면 앱의 `STT 모델`을 `base`나 `tiny`로 낮추거나, 코드의 `AppConfig.stt_device`를 `cpu`, `stt_compute_type`을 `int8`로 바꾸세요.
 
