@@ -1,2 +1,4 @@
-# Runtime dependencies for the default Windows TTS backend.
-# The app uses only the Python standard library by default.
+# Core desktop runtime uses the Python standard library on Windows.
+# Install optional profiles as needed:
+#   python -m pip install -r requirements-interactive.txt
+#   python -m pip install -r requirements-qwen.txt

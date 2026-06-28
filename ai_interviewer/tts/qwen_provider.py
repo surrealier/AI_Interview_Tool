@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import importlib.util
 import io
+import logging
 import os
 import subprocess
 import sys
@@ -14,6 +15,9 @@ from typing import Any
 from ai_interviewer.config import AppConfig, QWEN_BACKEND, WINDOWS_SAPI_BACKEND
 from ai_interviewer.question_parser import detect_language
 from ai_interviewer.tts.base import SpeechResult
+
+
+logger = logging.getLogger(__name__)
 
 
 class TTSProviderError(RuntimeError):
@@ -114,6 +118,7 @@ class QwenTTSProvider:
             return self._synthesize_with_qwen(wav_path, text, language, speaker)
         except Exception as exc:
             if not self.config.enable_windows_sapi_fallback:
+                logger.exception("Qwen3-TTS synthesis failed and fallback is disabled.")
                 if isinstance(exc, TTSProviderError):
                     raise
                 raise TTSProviderError(str(exc)) from exc
@@ -121,6 +126,7 @@ class QwenTTSProvider:
             fallback_path = self._fallback_cache_path(cache_key, text, language, speaker)
             self._last_backend = "windows-sapi"
             self._last_warning = f"Qwen3-TTS failed, so Windows TTS fallback was used: {exc}"
+            logger.warning(self._last_warning)
             return self._synthesize_with_windows_sapi(fallback_path, text, language)
 
     def _synthesize_with_qwen(self, wav_path: Path, text: str, language: str, speaker: str) -> Path:
@@ -317,7 +323,7 @@ try {
     )
 } catch {}
 $synth.Volume = 100
-$synth.Rate = 0
+$synth.Rate = -1
 $synth.SetOutputToWaveFile($outPath)
 $synth.Speak($text)
 $synth.Dispose()
@@ -326,21 +332,27 @@ $synth.Dispose()
         env["AI_INTERVIEW_TTS_TEXT_PATH"] = str(text_path)
         env["AI_INTERVIEW_TTS_OUT_PATH"] = str(wav_path)
         env["AI_INTERVIEW_TTS_CULTURE"] = culture
-        completed = subprocess.run(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                script,
-            ],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    script,
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+        finally:
+            try:
+                text_path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not delete temporary SAPI text sidecar: %s", text_path)
         if completed.returncode != 0:
             detail = completed.stderr.strip() or completed.stdout.strip() or "unknown PowerShell error"
             raise TTSProviderError(f"Windows SAPI fallback failed: {detail}")

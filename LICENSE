@@ -1,0 +1,19 @@
+AI Interviewer Beta License
+
+Copyright (c) 2026 Surrealier. All rights reserved.
+
+This repository and the AI Interviewer application are provided as source-available
+beta software. Unless a separate written agreement says otherwise, you may use the
+software only to evaluate, test, or operate AI Interviewer for licensed beta users.
+
+You may not resell, sublicense, redistribute, publish modified builds, remove
+notices, or use the software to provide a competing hosted or packaged product
+without written permission from Surrealier.
+
+The software is provided "as is" without warranties of merchantability, fitness
+for a particular purpose, or non-infringement. Surrealier is not liable for lost
+profits, lost data, hiring outcomes, or indirect damages arising from use of the
+software.
+
+Third-party packages and model weights are licensed by their respective owners
+under their own license terms. See THIRD_PARTY_NOTICES.md and MODEL_LICENSES.md.

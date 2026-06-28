@@ -25,6 +25,17 @@ class FakeTTSProvider:
         return SpeechResult(wav_path=Path("fake.wav"), language=language or "English", speaker=speaker or "Ryan")
 
 
+class FailingTTSProvider(FakeTTSProvider):
+    def speak(
+        self,
+        text: str,
+        cache_key: str,
+        language: str | None = None,
+        speaker: str | None = None,
+    ) -> SpeechResult:
+        raise RuntimeError("tts failed")
+
+
 def test_engine_repeat_and_restart_flow(tmp_path) -> None:
     engine = InterviewEngine(parse_questions("1. 자기소개\n2. Strength?"), tmp_path)
     provider = FakeTTSProvider()
@@ -44,3 +55,18 @@ def test_engine_repeat_and_restart_flow(tmp_path) -> None:
     assert engine.session.session_id != first_session_id
     assert engine.current_index == 0
     assert engine.current_record.clean_question == "자기소개"
+
+
+def test_engine_tts_failure_does_not_start_answer_timer(tmp_path) -> None:
+    engine = InterviewEngine(parse_questions("1. 자기소개"), tmp_path)
+
+    try:
+        engine.speak_current(FailingTTSProvider())
+    except RuntimeError:
+        pass
+
+    record = engine.current_record
+    assert record.tts_started_at
+    assert record.tts_finished_at
+    assert not record.answer_started_at
+    assert record.answer_seconds is None

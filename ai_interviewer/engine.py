@@ -74,16 +74,22 @@ class InterviewEngine:
         self.session.mark_tts_started(index, language=language, speaker=speaker)
         self.session.save()
         try:
-            return provider.speak(
+            result = provider.speak(
                 text=record.clean_question,
                 cache_key=self._cache_key(record),
                 language=language,
                 speaker=speaker,
             )
-        finally:
+        except Exception:
             self.session.mark_tts_finished(index)
-            self.session.start_answer(index)
             self.session.save()
+            raise
+
+        self.session.mark_tts_result(index, backend=result.backend, warning=result.warning)
+        self.session.mark_tts_finished(index)
+        self.session.start_answer(index)
+        self.session.save()
+        return result
 
     def _cache_key(self, record: QuestionRecord) -> str:
         return f"{self.session.session_id}-{record.question_index}"

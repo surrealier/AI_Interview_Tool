@@ -6,26 +6,41 @@ import urllib.error
 import urllib.request
 
 
-def generate_follow_up_question(original_question: str, transcript: str, language: str) -> str:
+def generate_follow_up_question(
+    original_question: str,
+    transcript: str,
+    language: str,
+    provider: str = "Auto",
+    ollama_model: str = "",
+    ollama_host: str = "",
+) -> str:
     answer = transcript.strip()
     if not answer:
         return _empty_answer_question(language)
 
-    ollama_question = _generate_with_ollama(original_question, answer, language)
-    if ollama_question:
-        return ollama_question
+    provider_name = provider.strip() or "Auto"
+    if provider_name in {"Auto", "Ollama"}:
+        ollama_question = _generate_with_ollama(original_question, answer, language, ollama_model, ollama_host)
+        if ollama_question:
+            return ollama_question
 
     if language == "Korean":
         return _generate_korean_follow_up(original_question, answer)
     return _generate_english_follow_up(original_question, answer)
 
 
-def _generate_with_ollama(original_question: str, answer: str, language: str) -> str:
-    model = os.environ.get("AI_INTERVIEW_OLLAMA_MODEL", "").strip()
+def _generate_with_ollama(
+    original_question: str,
+    answer: str,
+    language: str,
+    model_name: str = "",
+    host_name: str = "",
+) -> str:
+    model = (model_name or os.environ.get("AI_INTERVIEW_OLLAMA_MODEL", "")).strip()
     if not model:
         return ""
 
-    host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+    host = (host_name or os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")).rstrip("/")
     response_language = "Korean" if language == "Korean" else "English"
     prompt = (
         f"You are a professional interviewer. Generate exactly one concise follow-up question in {response_language}.\n"

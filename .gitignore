@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
+releases/
 models/
 *.spec.bak
 *.pyc
@@ -18,3 +19,9 @@ models/
 *.avi
 *.mov
 *.mkv
+sessions/
+AIInterview/
+**/session.json
+**/session.csv
+**/audio_cache/
+**/answers/

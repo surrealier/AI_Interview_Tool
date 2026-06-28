@@ -12,6 +12,16 @@ for package in ("qwen_tts", "transformers", "tokenizers", "soundfile", "cv2", "P
 
 datas = [
     ("README.md", "."),
+    ("INSTALL.md", "."),
+    ("PRIVACY.md", "."),
+    ("TERMS.md", "."),
+    ("SUPPORT.md", "."),
+    ("RELEASE_NOTES.md", "."),
+    ("MODEL_LICENSES.md", "."),
+    ("THIRD_PARTY_NOTICES.md", "."),
+    ("LICENSE", "."),
+    ("docs/release-checklist.md", "docs"),
+    ("docs/troubleshooting.md", "docs"),
     ("assets/.gitkeep", "assets"),
 ]
 try:

@@ -8,62 +8,29 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from ai_interviewer import __version__
+from ai_interviewer.app_state import SessionState
 from ai_interviewer.config import (
     AppConfig,
     DEFAULT_MODEL_ID,
     LARGE_MODEL_ID,
     QWEN_BACKEND,
     SUPPORTED_TTS_BACKENDS,
-    WINDOWS_SAPI_BACKEND,
 )
+from ai_interviewer.default_questions import default_questions_text
+from ai_interviewer.diagnostics import collect_runtime_diagnostics, diagnostics_text
 from ai_interviewer.engine import InterviewEngine
 from ai_interviewer.followup import generate_follow_up_question
 from ai_interviewer.question_parser import detect_language, parse_questions
-from ai_interviewer.stt import MicrophoneRecorder, STTError, WhisperTranscriber
+from ai_interviewer.stt import (
+    MicrophoneRecorder,
+    STTError,
+    WhisperTranscriber,
+    input_device_id_from_label,
+    list_input_devices,
+)
 from ai_interviewer.tts.qwen_provider import QwenTTSProvider
 from ai_interviewer.video_player import InterviewerVideoPlayer
-
-
-DEFAULT_QUESTIONS = """1. 자기소개를 해주세요.
-2. 이 직무에 지원한 이유를 말씀해 주세요.
-3. 우리 회사에 관심을 갖게 된 계기는 무엇인가요?
-4. 본인의 가장 큰 강점은 무엇인가요?
-5. 본인의 약점과 이를 개선하기 위해 노력한 점을 말씀해 주세요.
-6. 최근 가장 큰 성취 경험을 설명해 주세요.
-7. 실패했던 경험과 그 경험에서 배운 점을 말씀해 주세요.
-8. 팀으로 일하면서 갈등을 겪었던 경험이 있나요?
-9. 갈등 상황에서 본인은 보통 어떤 방식으로 해결하나요?
-10. 빠듯한 일정이나 압박이 있는 상황을 어떻게 관리하나요?
-11. 피드백을 받았을 때 어떻게 받아들이고 적용하나요?
-12. 새로운 환경에 적응했던 경험을 말씀해 주세요.
-13. 본인이 중요하게 생각하는 직업적 가치는 무엇인가요?
-14. 리더십을 발휘했던 경험이 있다면 설명해 주세요.
-15. 다른 사람을 설득했던 경험을 말씀해 주세요.
-16. 업무 우선순위가 충돌할 때 어떻게 판단하나요?
-17. 윤리적으로 고민되는 상황을 겪은 적이 있다면 어떻게 대응했나요?
-18. 입사 후 1년 동안 어떤 성과를 내고 싶나요?
-19. 3년 뒤 본인은 어떤 모습이길 기대하나요?
-20. 마지막으로 본인을 채용해야 하는 이유를 말씀해 주세요.
-1. Please introduce yourself.
-2. Why are you applying for this role?
-3. What made you interested in our company?
-4. What is your greatest strength?
-5. What is one weakness you are working to improve?
-6. Tell me about a recent achievement you are proud of.
-7. Tell me about a failure and what you learned from it.
-8. Have you experienced conflict while working on a team?
-9. How do you usually resolve conflicts at work?
-10. How do you manage tight deadlines or pressure?
-11. How do you receive and apply feedback?
-12. Tell me about a time you adapted to a new environment.
-13. What professional values are most important to you?
-14. Describe a time when you showed leadership.
-15. Tell me about a time you persuaded someone.
-16. How do you decide when priorities conflict?
-17. How have you handled an ethical dilemma?
-18. What impact would you like to make in your first year here?
-19. Where do you see yourself in three years?
-20. Why should we hire you?"""
 
 
 class InterviewApp(tk.Tk):
@@ -73,7 +40,7 @@ class InterviewApp(tk.Tk):
         self.geometry("1280x860")
         self.minsize(1120, 760)
 
-        self.config_model = AppConfig()
+        self.config_model = AppConfig.load()
         self.config_model.ensure_directories()
         self.config_model.model_id = self.config_model.preferred_model_id()
         self.engine: InterviewEngine | None = None
@@ -86,24 +53,38 @@ class InterviewApp(tk.Tk):
         self.preload_running = False
         self.tts_token = 0
         self.tts_running = False
+        self.runtime_report = None
+        self.session_state = SessionState.IDLE
 
         self._build_variables()
         self._build_ui()
         self._set_session_controls(False)
+        self.after(100, self._run_startup_diagnostics)
         self.after(500, self._preload_tts_model)
         self.after(250, self._update_timers)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def _set_state(self, state: SessionState) -> None:
+        self.session_state = state
+
     def _build_variables(self) -> None:
-        self.tts_backend_var = tk.StringVar(value=QWEN_BACKEND)
+        self.tts_backend_var = tk.StringVar(value=self.config_model.tts_backend)
         self.model_var = tk.StringVar(value=self.config_model.model_id)
         self.model_root_var = tk.StringVar(value=str(self.config_model.model_root))
         self.video_path_var = tk.StringVar(value=str(self.config_model.video_path))
         self.stt_model_var = tk.StringVar(value=self.config_model.stt_model_size)
-        self.language_var = tk.StringVar(value="Auto")
-        self.korean_speaker_var = tk.StringVar(value="Sohee")
-        self.english_speaker_var = tk.StringVar(value="Ryan")
+        self.stt_device_var = tk.StringVar(value=self.config_model.stt_device)
+        self.stt_compute_var = tk.StringVar(value=self.config_model.stt_compute_type)
+        self.input_device_var = tk.StringVar(value=self.config_model.input_device)
+        self.followup_provider_var = tk.StringVar(value=self.config_model.followup_provider)
+        self.ollama_model_var = tk.StringVar(value=self.config_model.ollama_model)
+        self.ollama_host_var = tk.StringVar(value=self.config_model.ollama_host)
+        self.allow_fallback_var = tk.BooleanVar(value=self.config_model.enable_windows_sapi_fallback)
+        self.language_var = tk.StringVar(value=self.config_model.default_language)
+        self.korean_speaker_var = tk.StringVar(value=self.config_model.korean_speaker)
+        self.english_speaker_var = tk.StringVar(value=self.config_model.english_speaker)
         self.status_var = tk.StringVar(value="질문을 입력하거나 파일을 불러오세요.")
+        self.diagnostic_status_var = tk.StringVar(value="런타임 진단 대기")
         self.progress_var = tk.StringVar(value="0 / 0")
         self.answer_timer_var = tk.StringVar(value="00:00")
         self.total_timer_var = tk.StringVar(value="00:00")
@@ -122,8 +103,9 @@ class InterviewApp(tk.Tk):
         header = ttk.Frame(root)
         header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         header.columnconfigure(1, weight=1)
-        ttk.Label(header, text="AI 면접관", font=("Segoe UI", 18, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(header, text=f"AI 면접관 beta {__version__}", font=("Segoe UI", 18, "bold")).grid(row=0, column=0, sticky="w")
         ttk.Label(header, textvariable=self.status_var).grid(row=0, column=1, sticky="e")
+        ttk.Label(header, textvariable=self.diagnostic_status_var).grid(row=1, column=0, columnspan=2, sticky="e", pady=(4, 0))
 
         input_frame = ttk.LabelFrame(root, text="질문 목록", padding=10)
         input_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 8))
@@ -135,7 +117,7 @@ class InterviewApp(tk.Tk):
         text_scroll = ttk.Scrollbar(input_frame, orient="vertical", command=self.question_text.yview)
         text_scroll.grid(row=0, column=1, sticky="ns")
         self.question_text.configure(yscrollcommand=text_scroll.set)
-        self.question_text.insert("1.0", DEFAULT_QUESTIONS)
+        self.question_text.insert("1.0", default_questions_text())
 
         input_buttons = ttk.Frame(input_frame)
         input_buttons.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -152,6 +134,11 @@ class InterviewApp(tk.Tk):
             values=SUPPORTED_TTS_BACKENDS,
             state="readonly",
         ).grid(row=0, column=1, sticky="ew", padx=6)
+        ttk.Checkbutton(
+            settings,
+            text="Qwen 실패 시 Windows 음성 fallback 허용",
+            variable=self.allow_fallback_var,
+        ).grid(row=0, column=2, sticky="w")
         ttk.Label(settings, text="모델").grid(row=1, column=0, sticky="w", pady=(6, 0))
         ttk.Combobox(
             settings,
@@ -189,6 +176,43 @@ class InterviewApp(tk.Tk):
             state="readonly",
             width=12,
         ).grid(row=7, column=1, sticky="w", padx=6, pady=(6, 0))
+        ttk.Label(settings, text="마이크").grid(row=8, column=0, sticky="w", pady=(6, 0))
+        self.input_device_combo = ttk.Combobox(
+            settings,
+            textvariable=self.input_device_var,
+            values=self._input_device_labels(),
+            state="readonly",
+        )
+        self.input_device_combo.grid(row=8, column=1, sticky="ew", padx=6, pady=(6, 0))
+        ttk.Button(settings, text="새로고침", command=self._refresh_input_devices).grid(row=8, column=2, pady=(6, 0))
+        ttk.Label(settings, text="STT 장치").grid(row=9, column=0, sticky="w", pady=(6, 0))
+        ttk.Combobox(
+            settings,
+            textvariable=self.stt_device_var,
+            values=("auto", "cuda", "cpu"),
+            state="readonly",
+            width=12,
+        ).grid(row=9, column=1, sticky="w", padx=6, pady=(6, 0))
+        ttk.Label(settings, text="STT compute").grid(row=10, column=0, sticky="w", pady=(6, 0))
+        ttk.Combobox(
+            settings,
+            textvariable=self.stt_compute_var,
+            values=("auto", "float16", "int8", "int8_float16", "float32"),
+            state="readonly",
+            width=12,
+        ).grid(row=10, column=1, sticky="w", padx=6, pady=(6, 0))
+        ttk.Label(settings, text="꼬리질문").grid(row=11, column=0, sticky="w", pady=(6, 0))
+        ttk.Combobox(
+            settings,
+            textvariable=self.followup_provider_var,
+            values=("Auto", "Ollama", "Rules"),
+            state="readonly",
+            width=12,
+        ).grid(row=11, column=1, sticky="w", padx=6, pady=(6, 0))
+        ttk.Label(settings, text="Ollama 모델").grid(row=12, column=0, sticky="w", pady=(6, 0))
+        ttk.Entry(settings, textvariable=self.ollama_model_var).grid(row=12, column=1, sticky="ew", padx=6, pady=(6, 0))
+        ttk.Label(settings, text="Ollama host").grid(row=13, column=0, sticky="w", pady=(6, 0))
+        ttk.Entry(settings, textvariable=self.ollama_host_var).grid(row=13, column=1, sticky="ew", padx=6, pady=(6, 0))
 
         session_frame = ttk.LabelFrame(root, text="면접 진행", padding=10)
         session_frame.grid(row=1, column=1, rowspan=2, sticky="nsew")
@@ -259,7 +283,7 @@ class InterviewApp(tk.Tk):
         self.restart_button = ttk.Button(controls, text="다시하기", command=self._restart_session)
         self.open_folder_button = ttk.Button(controls, text="저장 폴더", command=self._open_session_folder)
         self.sound_test_button = ttk.Button(controls, text="소리 테스트", command=self._test_system_sound)
-        self.diagnostics_button = ttk.Button(controls, text="TTS 진단", command=self._diagnose_tts)
+        self.diagnostics_button = ttk.Button(controls, text="런타임 진단", command=self._diagnose_tts)
         self.record_button = ttk.Button(controls, text="녹음 시작", command=self._start_recording)
         self.stop_record_button = ttk.Button(controls, text="녹음 중지 + STT", command=self._stop_recording_and_transcribe)
         self.followup_button = ttk.Button(controls, text="꼬리질문 생성", command=self._generate_follow_up)
@@ -319,6 +343,35 @@ class InterviewApp(tk.Tk):
                     rows.append(row[0].strip())
         return "\n".join(rows)
 
+    def _input_device_labels(self) -> tuple[str, ...]:
+        try:
+            labels = tuple(device.label for device in list_input_devices())
+        except STTError:
+            labels = ()
+        return ("Default", *labels)
+
+    def _refresh_input_devices(self) -> None:
+        labels = self._input_device_labels()
+        self.input_device_combo.configure(values=labels)
+        if self.input_device_var.get() not in labels:
+            self.input_device_var.set("Default")
+        self.status_var.set("마이크 장치 목록을 갱신했습니다.")
+
+    def _run_startup_diagnostics(self) -> None:
+        self._apply_config_from_ui(save=False)
+
+        def worker() -> None:
+            report = collect_runtime_diagnostics(self.config_model)
+            self.after(0, lambda: self._on_runtime_diagnostics(report))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_runtime_diagnostics(self, report) -> None:
+        self.runtime_report = report
+        self.diagnostic_status_var.set(report.summary_ko())
+        if report.has_failures:
+            self.status_var.set("필수 런타임 문제가 있습니다. 런타임 진단을 확인하세요.")
+
     def _choose_model_root(self) -> None:
         path = filedialog.askdirectory(title="models 폴더 선택", initialdir=self.model_root_var.get())
         if path:
@@ -326,6 +379,7 @@ class InterviewApp(tk.Tk):
             self.config_model.model_root = Path(path).expanduser()
             self.model_var.set(self.config_model.preferred_model_id())
             self.provider = None
+            self._apply_config_from_ui()
             if self.engine is None:
                 self._preload_tts_model()
 
@@ -338,6 +392,7 @@ class InterviewApp(tk.Tk):
             self.video_path_var.set(path)
             self.config_model.video_path = Path(path).expanduser()
             self.video_player.set_video_path(self.config_model.video_path)
+            self._apply_config_from_ui()
 
     def _start_session(self) -> None:
         questions = parse_questions(self.question_text.get("1.0", "end"))
@@ -346,14 +401,22 @@ class InterviewApp(tk.Tk):
             return
 
         self._apply_config_from_ui()
+        self.runtime_report = collect_runtime_diagnostics(self.config_model)
+        self.diagnostic_status_var.set(self.runtime_report.summary_ko())
+        if self.runtime_report.has_failures and not messagebox.askyesno(
+            "런타임 경고",
+            "필수 런타임 문제가 있습니다. TTS/STT 일부 기능이 실패할 수 있습니다.\n\n계속 시작할까요?",
+        ):
+            return
         self.engine = InterviewEngine(questions=questions, sessions_root=self.config_model.sessions_root)
         self.provider = QwenTTSProvider(self.config_model, self.engine.session.audio_cache_dir)
+        self._set_state(SessionState.READY)
         self._set_session_controls(True)
         self._render_current_question()
         self.status_var.set("세션을 시작했습니다.")
         self._speak_current(repeat=False)
 
-    def _apply_config_from_ui(self) -> None:
+    def _apply_config_from_ui(self, save: bool = True) -> None:
         self.config_model.model_id = self.model_var.get()
         self.config_model.tts_backend = self.tts_backend_var.get()
         self.config_model.model_root = Path(self.model_root_var.get()).expanduser()
@@ -362,8 +425,17 @@ class InterviewApp(tk.Tk):
         self.config_model.korean_speaker = self.korean_speaker_var.get().strip() or "Sohee"
         self.config_model.english_speaker = self.english_speaker_var.get().strip() or "Ryan"
         self.config_model.stt_model_size = self.stt_model_var.get()
+        self.config_model.stt_device = self.stt_device_var.get()
+        self.config_model.stt_compute_type = self.stt_compute_var.get()
+        self.config_model.input_device = self.input_device_var.get()
+        self.config_model.followup_provider = self.followup_provider_var.get()
+        self.config_model.ollama_model = self.ollama_model_var.get().strip()
+        self.config_model.ollama_host = self.ollama_host_var.get().strip() or "http://127.0.0.1:11434"
+        self.config_model.enable_windows_sapi_fallback = bool(self.allow_fallback_var.get())
         self.config_model.ensure_directories()
         self.video_player.set_video_path(self.config_model.video_path)
+        if save:
+            self.config_model.save()
 
     def _preload_tts_model(self) -> None:
         if self.preload_running:
@@ -373,6 +445,7 @@ class InterviewApp(tk.Tk):
             return
 
         self.preload_running = True
+        self._set_state(SessionState.PRELOADING)
         self.status_var.set("Qwen3-TTS 모델을 미리 로딩 중입니다...")
         cache_dir = self.config_model.sessions_root / "_preload"
         provider = QwenTTSProvider(self.config_model, cache_dir)
@@ -390,6 +463,7 @@ class InterviewApp(tk.Tk):
 
     def _on_preload_done(self) -> None:
         self.preload_running = False
+        self._set_state(SessionState.READY)
         if self.engine is None:
             if self.config_model.supports_style_instruction():
                 self.status_var.set("Qwen3-TTS 모델 준비 완료. 면접관 말투 지시가 적용됩니다.")
@@ -398,8 +472,9 @@ class InterviewApp(tk.Tk):
 
     def _on_preload_error(self, exc: Exception) -> None:
         self.preload_running = False
+        self._set_state(SessionState.ERROR)
         if self.engine is None:
-            self.status_var.set("Qwen3-TTS 모델 로딩 실패. TTS 진단을 확인하세요.")
+            self.status_var.set("Qwen3-TTS 모델 로딩 실패. 런타임 진단을 확인하세요.")
             messagebox.showwarning("Qwen3-TTS preload", str(exc))
 
     def _render_current_question(self) -> None:
@@ -436,11 +511,13 @@ class InterviewApp(tk.Tk):
     def _speak_current(self, repeat: bool) -> None:
         if self.engine is None or self.tts_running:
             return
+        self._apply_config_from_ui()
         self._save_current_memo()
         provider = self._get_provider()
         token = self.tts_token + 1
         self.tts_token = token
         self.tts_running = True
+        self._set_state(SessionState.SPEAKING)
         self.repeat_button.configure(state="disabled")
         self.video_player.start()
         if self.config_model.tts_backend == QWEN_BACKEND:
@@ -455,7 +532,7 @@ class InterviewApp(tk.Tk):
             except Exception as exc:
                 self.after(0, lambda: self._on_tts_error(token, exc))
                 return
-            self.after(0, lambda: self._on_tts_done(token, result.wav_path))
+            self.after(0, lambda: self._on_tts_done(token, result))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -463,31 +540,35 @@ class InterviewApp(tk.Tk):
         if token == self.tts_token and self.tts_running:
             self.status_var.set("Qwen3-TTS 생성 중입니다. 모델이 아직 준비 중이면 첫 질문은 조금 걸릴 수 있습니다.")
 
-    def _on_tts_done(self, token: int, wav_path: Path) -> None:
+    def _on_tts_done(self, token: int, result) -> None:
         if token != self.tts_token:
             return
         self.tts_running = False
         self.repeat_button.configure(state="normal")
         self.video_player.stop()
-        backend = self.provider._last_backend if self.provider is not None else "unknown"
-        warning = self.provider._last_warning if self.provider is not None else ""
-        if warning:
-            self.status_var.set(f"Windows 기본 음성으로 재생했습니다. 오디오: {wav_path.name}")
-            messagebox.showwarning("Qwen3-TTS fallback", warning)
+        if result.warning:
+            self.status_var.set(f"Windows 기본 음성 fallback으로 재생했습니다. 오디오: {result.wav_path.name}")
+            messagebox.showwarning("Qwen3-TTS fallback", result.warning)
         else:
-            self.status_var.set(f"답변 시간을 기록 중입니다. backend={backend}, 오디오: {wav_path.name}")
+            self.status_var.set(f"답변 시간을 기록 중입니다. backend={result.backend}, 오디오: {result.wav_path.name}")
+        self._set_state(SessionState.ANSWERING)
         self._render_current_question()
 
     def _on_tts_error(self, token: int, exc: Exception) -> None:
         if token != self.tts_token:
             return
         self.tts_running = False
+        self._set_state(SessionState.ERROR)
         self.repeat_button.configure(state="normal")
         self.video_player.stop()
         self.status_var.set("TTS 오류가 발생했습니다.")
         messagebox.showerror("TTS 오류", str(exc))
 
     def _stop_tts(self) -> None:
+        self.tts_token += 1
+        self.tts_running = False
+        self._set_state(SessionState.ANSWERING if self.engine is not None else SessionState.IDLE)
+        self.repeat_button.configure(state="normal")
         if self.provider is not None:
             self.provider.stop()
         self.video_player.stop()
@@ -506,12 +587,14 @@ class InterviewApp(tk.Tk):
         index = self.engine.current_index + 1
         path = self.engine.session.answers_dir / f"answer_{index:03d}.wav"
         try:
-            self.recorder.start(path)
+            self.recorder.start(path, input_device=input_device_id_from_label(self.input_device_var.get()))
         except STTError as exc:
             messagebox.showerror("녹음 시작 실패", str(exc))
+            self._set_state(SessionState.ERROR)
             return
 
         self.recording = True
+        self._set_state(SessionState.RECORDING)
         self.recording_path = path
         self.record_button.configure(state="disabled")
         self.stop_record_button.configure(state="normal")
@@ -529,10 +612,12 @@ class InterviewApp(tk.Tk):
             self.recording_path = None
             self.record_button.configure(state="normal")
             self.stop_record_button.configure(state="disabled")
+            self._set_state(SessionState.ERROR)
             messagebox.showerror("녹음 중지 실패", str(exc))
             return
 
         self.recording = False
+        self._set_state(SessionState.TRANSCRIBING)
         self.recording_path = path
         self.record_button.configure(state="normal")
         self.stop_record_button.configure(state="disabled")
@@ -562,23 +647,34 @@ class InterviewApp(tk.Tk):
             self.transcript_text.delete("1.0", "end")
             self.transcript_text.insert("1.0", transcript)
         self.status_var.set("STT 변환이 완료되었습니다.")
+        self._set_state(SessionState.ANSWERING)
 
     def _on_transcript_error(self, exc: Exception) -> None:
         self.status_var.set("STT 변환 실패")
+        self._set_state(SessionState.ERROR)
         messagebox.showerror("STT 오류", str(exc))
 
     def _generate_follow_up(self) -> None:
         if self.engine is None:
             return
+        self._apply_config_from_ui()
         self._save_current_memo()
         record = self.engine.current_record
         transcript = self.transcript_text.get("1.0", "end").strip() or record.memo
         question = record.clean_question
         language = detect_language(question)
         self.status_var.set("꼬리질문 생성 중입니다...")
+        self._set_state(SessionState.FOLLOW_UP_GENERATING)
 
         def worker() -> None:
-            follow_up = generate_follow_up_question(question, transcript, language)
+            follow_up = generate_follow_up_question(
+                question,
+                transcript,
+                language,
+                provider=self.config_model.followup_provider,
+                ollama_model=self.config_model.ollama_model,
+                ollama_host=self.config_model.ollama_host,
+            )
             self.after(0, lambda: self._on_follow_up_done(follow_up))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -591,10 +687,12 @@ class InterviewApp(tk.Tk):
         self.followup_text.delete("1.0", "end")
         self.followup_text.insert("1.0", follow_up)
         self.status_var.set("꼬리질문이 생성되었습니다.")
+        self._set_state(SessionState.ANSWERING)
 
     def _speak_follow_up(self) -> None:
         if self.engine is None or self.tts_running:
             return
+        self._apply_config_from_ui()
         self._save_current_memo()
         follow_up = self.followup_text.get("1.0", "end").strip()
         if not follow_up:
@@ -605,16 +703,19 @@ class InterviewApp(tk.Tk):
         token = self.tts_token + 1
         self.tts_token = token
         self.tts_running = True
+        self._set_state(SessionState.SPEAKING)
         self.repeat_button.configure(state="disabled")
         self.video_player.start()
         self.status_var.set("꼬리질문을 재생 중입니다...")
+        session_id = self.engine.session.session_id
+        current_index = self.engine.current_index
 
         def worker() -> None:
             try:
                 language, speaker = provider.resolve_voice(follow_up)
                 provider.speak(
                     text=follow_up,
-                    cache_key=f"{self.engine.session.session_id}-{self.engine.current_index + 1}-followup",
+                    cache_key=f"{session_id}-{current_index + 1}-followup",
                     language=language,
                     speaker=speaker,
                 )
@@ -632,6 +733,7 @@ class InterviewApp(tk.Tk):
         self.repeat_button.configure(state="normal")
         self.video_player.stop()
         self.status_var.set("꼬리질문 재생이 끝났습니다.")
+        self._set_state(SessionState.ANSWERING)
 
     def _test_system_sound(self) -> None:
         try:
@@ -646,14 +748,9 @@ class InterviewApp(tk.Tk):
 
     def _diagnose_tts(self) -> None:
         self._apply_config_from_ui()
-        cache_dir = (
-            self.engine.session.audio_cache_dir
-            if self.engine is not None
-            else self.config_model.sessions_root / "_diagnostics"
-        )
-        provider = self.provider or QwenTTSProvider(self.config_model, cache_dir)
-        report = "\n".join(provider.diagnose())
-        messagebox.showinfo("TTS 진단", report)
+        self.runtime_report = collect_runtime_diagnostics(self.config_model)
+        self.diagnostic_status_var.set(self.runtime_report.summary_ko())
+        messagebox.showinfo("런타임 진단", diagnostics_text(self.runtime_report))
 
     def _next_question(self) -> None:
         if self.engine is None:
@@ -716,6 +813,10 @@ class InterviewApp(tk.Tk):
         self.after(250, self._update_timers)
 
     def _on_close(self) -> None:
+        try:
+            self._apply_config_from_ui()
+        except Exception:
+            pass
         if self.recording:
             try:
                 self.recorder.stop()
@@ -726,6 +827,7 @@ class InterviewApp(tk.Tk):
         if self.engine is not None:
             self._save_current_memo()
             self.engine.finish_current_answer()
+        self._set_state(SessionState.IDLE)
         self.destroy()
 
 
