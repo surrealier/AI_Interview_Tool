@@ -68,6 +68,8 @@ class AppConfig:
     sessions_root: Path = field(default_factory=default_sessions_root)
     video_path: Path = field(default_factory=default_video_path)
     default_language: str = "Auto"
+    interview_language: str = "Korean"
+    question_set_name: str = "기본 인성 면접"
     korean_speaker: str = "Sohee"
     english_speaker: str = "Ryan"
     default_instruct: str = (

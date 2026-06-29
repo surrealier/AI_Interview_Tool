@@ -18,15 +18,20 @@ class InterviewerVideoPlayer:
         self._image: Any | None = None
         self._image_draw: Any | None = None
         self._image_tk: Any | None = None
+        self._last_image: Any | None = None
         self._synthetic_mode = False
         self._synthetic_frame = 0
+        self._fullscreen: tk.Toplevel | None = None
+        self._fullscreen_label: tk.Label | None = None
+        self._fullscreen_photo: Any | None = None
 
         self.frame = ttk.Frame(parent)
         self.frame.columnconfigure(0, weight=1)
+        self.frame.rowconfigure(0, weight=1)
+        self.frame.configure(width=width, height=height)
+        self.frame.grid_propagate(False)
         self.label = tk.Label(
             self.frame,
-            width=width,
-            height=height,
             bg="#111111",
             fg="#d6d6d6",
             anchor="center",
@@ -34,6 +39,7 @@ class InterviewerVideoPlayer:
             text="면접관 영상 대기",
         )
         self.label.grid(row=0, column=0, sticky="nsew")
+        self.label.bind("<Double-Button-1>", lambda _event: self.toggle_fullscreen())
 
     @property
     def widget(self) -> ttk.Frame:
@@ -78,7 +84,36 @@ class InterviewerVideoPlayer:
 
     def destroy(self) -> None:
         self.stop()
+        self._close_fullscreen()
         self.frame.destroy()
+
+    def toggle_fullscreen(self) -> None:
+        if self._fullscreen is not None and self._fullscreen.winfo_exists():
+            self._close_fullscreen()
+            return
+        root = self.frame.winfo_toplevel()
+        window = tk.Toplevel(root)
+        window.title("AI Interviewer - Interviewer Video")
+        window.configure(bg="#050505")
+        window.attributes("-fullscreen", True)
+        window.bind("<Escape>", lambda _event: self._close_fullscreen())
+        window.bind("<Double-Button-1>", lambda _event: self._close_fullscreen())
+        window.protocol("WM_DELETE_WINDOW", self._close_fullscreen)
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(0, weight=1)
+        label = tk.Label(window, bg="#050505", fg="#f5f5f5", text="면접관 영상 대기")
+        label.grid(row=0, column=0, sticky="nsew")
+        self._fullscreen = window
+        self._fullscreen_label = label
+        if self._photo is not None:
+            self._update_fullscreen(self._last_image)
+
+    def _close_fullscreen(self) -> None:
+        if self._fullscreen is not None and self._fullscreen.winfo_exists():
+            self._fullscreen.destroy()
+        self._fullscreen = None
+        self._fullscreen_label = None
+        self._fullscreen_photo = None
 
     def _tick(self) -> None:
         if not self._running or self._capture is None:
@@ -95,8 +130,7 @@ class InterviewerVideoPlayer:
             canvas = self._image.new("RGB", (self.width, self.height), (17, 17, 17))
             offset = ((self.width - image.width) // 2, (self.height - image.height) // 2)
             canvas.paste(image, offset)
-            self._photo = self._image_tk.PhotoImage(canvas)
-            self.label.configure(image=self._photo, text="")
+            self._render_image(canvas)
 
         self.label.after(33, self._tick)
 
@@ -166,9 +200,32 @@ class InterviewerVideoPlayer:
         if mouth_height > 8:
             draw.rectangle((center_x - 20, mouth_y + 1, center_x + 20, mouth_y + 4), fill=(244, 232, 220))
 
+        self._render_image(image)
+        self.label.after(80, self._tick_synthetic)
+
+    def _render_image(self, image: Any) -> None:
+        self._last_image = image
         self._photo = self._image_tk.PhotoImage(image)
         self.label.configure(image=self._photo, text="")
-        self.label.after(80, self._tick_synthetic)
+        self._update_fullscreen(image)
+
+    def _update_fullscreen(self, image: Any | None) -> None:
+        if image is None or self._fullscreen_label is None:
+            return
+        if self._fullscreen is None or not self._fullscreen.winfo_exists():
+            return
+        width = max(1, self._fullscreen.winfo_width())
+        height = max(1, self._fullscreen.winfo_height())
+        if width <= 1 or height <= 1:
+            self._fullscreen.after(50, lambda: self._update_fullscreen(image))
+            return
+        fullscreen_image = image.copy()
+        fullscreen_image.thumbnail((width, height))
+        canvas = self._image.new("RGB", (width, height), (5, 5, 5))
+        offset = ((width - fullscreen_image.width) // 2, (height - fullscreen_image.height) // 2)
+        canvas.paste(fullscreen_image, offset)
+        self._fullscreen_photo = self._image_tk.PhotoImage(canvas)
+        self._fullscreen_label.configure(image=self._fullscreen_photo, text="")
 
     def _load_dependencies(self) -> bool:
         if self._cv2 is not None:
@@ -202,4 +259,7 @@ class InterviewerVideoPlayer:
 
     def _show_placeholder(self, text: str) -> None:
         self._photo = None
+        self._last_image = None
         self.label.configure(image="", text=text)
+        if self._fullscreen_label is not None:
+            self._fullscreen_label.configure(image="", text=text)

@@ -18,6 +18,7 @@ from ai_interviewer.config import (
     SUPPORTED_TTS_BACKENDS,
 )
 from ai_interviewer.default_questions import default_questions_text
+from ai_interviewer.default_questions import default_question_set_name, question_set_names
 from ai_interviewer.diagnostics import collect_runtime_diagnostics, diagnostics_text
 from ai_interviewer.engine import InterviewEngine
 from ai_interviewer.followup import generate_follow_up_question
@@ -38,7 +39,7 @@ class InterviewApp(tk.Tk):
         super().__init__()
         self.title("AI Interviewer")
         self.geometry("1280x860")
-        self.minsize(1120, 760)
+        self.minsize(1180, 760)
 
         self.config_model = AppConfig.load()
         self.config_model.ensure_directories()
@@ -67,7 +68,32 @@ class InterviewApp(tk.Tk):
     def _set_state(self, state: SessionState) -> None:
         self.session_state = state
 
+    def _configure_styles(self) -> None:
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("App.TFrame", background="#f3f4f6")
+        style.configure("Surface.TFrame", background="#ffffff")
+        style.configure("Panel.TLabelframe", background="#ffffff", bordercolor="#d1d5db", relief="solid")
+        style.configure("Panel.TLabelframe.Label", background="#ffffff", foreground="#111827", font=("Segoe UI", 10, "bold"))
+        style.configure("Section.TLabel", background="#ffffff", foreground="#111827", font=("Segoe UI", 10, "bold"))
+        style.configure("Muted.TLabel", background="#ffffff", foreground="#6b7280")
+        style.configure("Metric.TLabel", background="#ffffff", foreground="#111827", font=("Consolas", 16, "bold"))
+        style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), padding=(12, 6))
+        style.configure("Tool.TButton", padding=(10, 5))
+
     def _build_variables(self) -> None:
+        interview_language = self.config_model.interview_language
+        if interview_language not in {"Korean", "English"}:
+            interview_language = "Korean"
+        question_set_name = self.config_model.question_set_name
+        if question_set_name not in question_set_names(interview_language):
+            question_set_name = default_question_set_name(interview_language)
+
+        self.interview_language_var = tk.StringVar(value=interview_language)
+        self.question_set_var = tk.StringVar(value=question_set_name)
         self.tts_backend_var = tk.StringVar(value=self.config_model.tts_backend)
         self.model_var = tk.StringVar(value=self.config_model.model_id)
         self.model_root_var = tk.StringVar(value=str(self.config_model.model_root))
@@ -80,7 +106,10 @@ class InterviewApp(tk.Tk):
         self.ollama_model_var = tk.StringVar(value=self.config_model.ollama_model)
         self.ollama_host_var = tk.StringVar(value=self.config_model.ollama_host)
         self.allow_fallback_var = tk.BooleanVar(value=self.config_model.enable_windows_sapi_fallback)
-        self.language_var = tk.StringVar(value=self.config_model.default_language)
+        tts_language = self.config_model.default_language
+        if tts_language == "Auto":
+            tts_language = interview_language
+        self.language_var = tk.StringVar(value=tts_language)
         self.korean_speaker_var = tk.StringVar(value=self.config_model.korean_speaker)
         self.english_speaker_var = tk.StringVar(value=self.config_model.english_speaker)
         self.status_var = tk.StringVar(value="질문을 입력하거나 파일을 불러오세요.")
@@ -91,135 +120,240 @@ class InterviewApp(tk.Tk):
         self.current_question_var = tk.StringVar(value="세션이 시작되지 않았습니다.")
 
     def _build_ui(self) -> None:
+        self._configure_styles()
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
-        root = ttk.Frame(self, padding=12)
+        root = ttk.Frame(self, padding=14, style="App.TFrame")
         root.grid(row=0, column=0, sticky="nsew")
-        root.columnconfigure(0, weight=3)
-        root.columnconfigure(1, weight=2)
+        root.columnconfigure(0, weight=1)
         root.rowconfigure(1, weight=1)
 
-        header = ttk.Frame(root)
-        header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        header = tk.Frame(root, bg="#111827", padx=16, pady=6, highlightthickness=0)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
         header.columnconfigure(1, weight=1)
-        ttk.Label(header, text=f"AI 면접관 beta {__version__}", font=("Segoe UI", 18, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(header, textvariable=self.status_var).grid(row=0, column=1, sticky="e")
-        ttk.Label(header, textvariable=self.diagnostic_status_var).grid(row=1, column=0, columnspan=2, sticky="e", pady=(4, 0))
+        tk.Label(
+            header,
+            text="AI Interviewer",
+            bg="#111827",
+            fg="#f9fafb",
+            font=("Segoe UI", 18, "bold"),
+        ).grid(row=0, column=0, sticky="w")
+        tk.Label(
+            header,
+            text=f"beta {__version__}",
+            bg="#111827",
+            fg="#93c5fd",
+            font=("Segoe UI", 10, "bold"),
+        ).grid(row=1, column=0, sticky="w", pady=(2, 0))
+        tk.Label(
+            header,
+            textvariable=self.status_var,
+            bg="#111827",
+            fg="#f9fafb",
+            font=("Segoe UI", 10),
+            anchor="e",
+        ).grid(row=0, column=1, sticky="e")
+        tk.Label(
+            header,
+            textvariable=self.diagnostic_status_var,
+            bg="#111827",
+            fg="#bfdbfe",
+            font=("Segoe UI", 9),
+            anchor="e",
+        ).grid(row=1, column=1, sticky="e", pady=(2, 0))
 
-        input_frame = ttk.LabelFrame(root, text="질문 목록", padding=10)
-        input_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 8))
-        input_frame.columnconfigure(0, weight=1)
-        input_frame.rowconfigure(0, weight=1)
+        main = ttk.PanedWindow(root, orient="horizontal")
+        main.grid(row=1, column=0, sticky="nsew")
 
-        self.question_text = tk.Text(input_frame, wrap="word", undo=True, height=20)
-        self.question_text.grid(row=0, column=0, sticky="nsew")
-        text_scroll = ttk.Scrollbar(input_frame, orient="vertical", command=self.question_text.yview)
-        text_scroll.grid(row=0, column=1, sticky="ns")
+        left = ttk.Frame(main, padding=12, style="Surface.TFrame")
+        right = ttk.Frame(main, padding=12, style="Surface.TFrame")
+        main.add(left, weight=3)
+        main.add(right, weight=4)
+
+        left.columnconfigure(0, weight=1)
+        left.rowconfigure(1, weight=1)
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(3, weight=1)
+
+        mode_panel = ttk.LabelFrame(left, text="Interview Setup", padding=12, style="Panel.TLabelframe")
+        mode_panel.grid(row=0, column=0, sticky="ew")
+        mode_panel.columnconfigure(1, weight=1)
+        ttk.Label(mode_panel, text="Mode", style="Section.TLabel").grid(row=0, column=0, sticky="w")
+        mode_buttons = ttk.Frame(mode_panel, style="Surface.TFrame")
+        mode_buttons.grid(row=0, column=1, sticky="w", padx=8)
+        ttk.Radiobutton(
+            mode_buttons,
+            text="한국어",
+            value="Korean",
+            variable=self.interview_language_var,
+            command=self._on_language_mode_changed,
+        ).pack(side="left")
+        ttk.Radiobutton(
+            mode_buttons,
+            text="English",
+            value="English",
+            variable=self.interview_language_var,
+            command=self._on_language_mode_changed,
+        ).pack(side="left", padx=(12, 0))
+        ttk.Label(mode_panel, text="Question set", style="Section.TLabel").grid(row=1, column=0, sticky="w", pady=(10, 0))
+        self.question_set_combo = ttk.Combobox(
+            mode_panel,
+            textvariable=self.question_set_var,
+            values=question_set_names(self.interview_language_var.get()),
+            state="readonly",
+        )
+        self.question_set_combo.grid(row=1, column=1, sticky="ew", padx=8, pady=(10, 0))
+        self.question_set_combo.bind("<<ComboboxSelected>>", lambda _event: self._apply_selected_question_set())
+        question_set_buttons = ttk.Frame(mode_panel, style="Surface.TFrame")
+        question_set_buttons.grid(row=1, column=2, sticky="e", pady=(10, 0))
+        ttk.Button(question_set_buttons, text="Load", command=self._apply_selected_question_set, style="Tool.TButton").pack(side="left")
+        ttk.Button(question_set_buttons, text="File", command=self._load_questions_file, style="Tool.TButton").pack(side="left", padx=(6, 0))
+
+        editor = ttk.LabelFrame(left, text="Questions", padding=12, style="Panel.TLabelframe")
+        editor.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
+        editor.columnconfigure(0, weight=1)
+        editor.rowconfigure(1, weight=1)
+        editor_header = ttk.Frame(editor, style="Surface.TFrame")
+        editor_header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        editor_header.columnconfigure(0, weight=1)
+        ttk.Label(editor_header, text="20 curated questions, editable before start", style="Muted.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Button(editor_header, text="Start Interview", command=self._start_session, style="Primary.TButton").grid(row=0, column=1, sticky="e")
+        self.question_text = tk.Text(
+            editor,
+            wrap="word",
+            undo=True,
+            height=12,
+            width=58,
+            bg="#ffffff",
+            fg="#111827",
+            insertbackground="#111827",
+            relief="solid",
+            bd=1,
+            padx=10,
+            pady=8,
+            font=("Segoe UI", 10),
+        )
+        self.question_text.grid(row=1, column=0, sticky="nsew")
+        text_scroll = ttk.Scrollbar(editor, orient="vertical", command=self.question_text.yview)
+        text_scroll.grid(row=1, column=1, sticky="ns")
         self.question_text.configure(yscrollcommand=text_scroll.set)
-        self.question_text.insert("1.0", default_questions_text())
+        self.question_text.insert("1.0", default_questions_text(self.interview_language_var.get(), self.question_set_var.get()))
 
-        input_buttons = ttk.Frame(input_frame)
-        input_buttons.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        ttk.Button(input_buttons, text="파일 불러오기", command=self._load_questions_file).pack(side="left")
-        ttk.Button(input_buttons, text="세션 시작", command=self._start_session).pack(side="left", padx=6)
+        settings = ttk.LabelFrame(left, text="Runtime Settings", padding=10, style="Panel.TLabelframe")
+        settings.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+        settings.columnconfigure(0, weight=1)
+        settings_tabs = ttk.Notebook(settings)
+        settings_tabs.grid(row=0, column=0, sticky="ew")
 
-        settings = ttk.LabelFrame(root, text="TTS 설정", padding=10)
-        settings.grid(row=2, column=0, sticky="ew", padx=(0, 8), pady=(8, 0))
-        settings.columnconfigure(1, weight=1)
-        ttk.Label(settings, text="TTS 엔진").grid(row=0, column=0, sticky="w")
+        voice_tab = ttk.Frame(settings_tabs, padding=10, style="Surface.TFrame")
+        audio_tab = ttk.Frame(settings_tabs, padding=10, style="Surface.TFrame")
+        ai_tab = ttk.Frame(settings_tabs, padding=10, style="Surface.TFrame")
+        media_tab = ttk.Frame(settings_tabs, padding=10, style="Surface.TFrame")
+        for tab in (voice_tab, audio_tab, ai_tab, media_tab):
+            tab.columnconfigure(1, weight=1)
+
+        settings_tabs.add(voice_tab, text="Voice")
+        settings_tabs.add(audio_tab, text="STT")
+        settings_tabs.add(ai_tab, text="AI")
+        settings_tabs.add(media_tab, text="Media")
+
+        ttk.Label(voice_tab, text="TTS engine").grid(row=0, column=0, sticky="w")
         ttk.Combobox(
-            settings,
+            voice_tab,
             textvariable=self.tts_backend_var,
             values=SUPPORTED_TTS_BACKENDS,
             state="readonly",
-        ).grid(row=0, column=1, sticky="ew", padx=6)
+        ).grid(row=0, column=1, sticky="ew", padx=8)
         ttk.Checkbutton(
-            settings,
-            text="Qwen 실패 시 Windows 음성 fallback 허용",
+            voice_tab,
+            text="Allow Windows fallback",
             variable=self.allow_fallback_var,
         ).grid(row=0, column=2, sticky="w")
-        ttk.Label(settings, text="모델").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(voice_tab, text="Model").grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Combobox(
-            settings,
+            voice_tab,
             textvariable=self.model_var,
             values=(DEFAULT_MODEL_ID, LARGE_MODEL_ID),
             state="readonly",
-        ).grid(row=1, column=1, sticky="ew", padx=6, pady=(6, 0))
-        ttk.Label(settings, text="모델 폴더").grid(row=2, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(settings, textvariable=self.model_root_var).grid(row=2, column=1, sticky="ew", padx=6, pady=(6, 0))
-        ttk.Button(settings, text="찾기", command=self._choose_model_root).grid(row=2, column=2, pady=(6, 0))
-        ttk.Label(settings, text="언어").grid(row=3, column=0, sticky="w", pady=(6, 0))
+        ).grid(row=1, column=1, columnspan=2, sticky="ew", padx=8, pady=(8, 0))
+        ttk.Label(voice_tab, text="TTS language").grid(row=2, column=0, sticky="w", pady=(8, 0))
         ttk.Combobox(
-            settings,
+            voice_tab,
             textvariable=self.language_var,
             values=("Auto", "Korean", "English"),
             state="readonly",
             width=12,
-        ).grid(row=3, column=1, sticky="w", padx=6, pady=(6, 0))
-        ttk.Label(settings, text="한국어 화자").grid(row=4, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(settings, textvariable=self.korean_speaker_var, width=16).grid(
-            row=4, column=1, sticky="w", padx=6, pady=(6, 0)
+        ).grid(row=2, column=1, sticky="w", padx=8, pady=(8, 0))
+        ttk.Label(voice_tab, text="KR speaker").grid(row=3, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(voice_tab, textvariable=self.korean_speaker_var, width=16).grid(
+            row=3, column=1, sticky="w", padx=8, pady=(8, 0)
         )
-        ttk.Label(settings, text="영어 화자").grid(row=5, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(settings, textvariable=self.english_speaker_var, width=16).grid(
-            row=5, column=1, sticky="w", padx=6, pady=(6, 0)
+        ttk.Label(voice_tab, text="EN speaker").grid(row=3, column=2, sticky="e", pady=(8, 0))
+        ttk.Entry(voice_tab, textvariable=self.english_speaker_var, width=16).grid(
+            row=3, column=3, sticky="w", padx=8, pady=(8, 0)
         )
-        ttk.Label(settings, text="영상 파일").grid(row=6, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(settings, textvariable=self.video_path_var).grid(row=6, column=1, sticky="ew", padx=6, pady=(6, 0))
-        ttk.Button(settings, text="찾기", command=self._choose_video_file).grid(row=6, column=2, pady=(6, 0))
-        ttk.Label(settings, text="STT 모델").grid(row=7, column=0, sticky="w", pady=(6, 0))
+
+        ttk.Label(audio_tab, text="STT model").grid(row=0, column=0, sticky="w")
         ttk.Combobox(
-            settings,
+            audio_tab,
             textvariable=self.stt_model_var,
             values=("tiny", "base", "small", "medium", "large-v3"),
             state="readonly",
             width=12,
-        ).grid(row=7, column=1, sticky="w", padx=6, pady=(6, 0))
-        ttk.Label(settings, text="마이크").grid(row=8, column=0, sticky="w", pady=(6, 0))
+        ).grid(row=0, column=1, sticky="w", padx=8)
+        ttk.Label(audio_tab, text="Input").grid(row=1, column=0, sticky="w", pady=(8, 0))
         self.input_device_combo = ttk.Combobox(
-            settings,
+            audio_tab,
             textvariable=self.input_device_var,
             values=self._input_device_labels(),
             state="readonly",
         )
-        self.input_device_combo.grid(row=8, column=1, sticky="ew", padx=6, pady=(6, 0))
-        ttk.Button(settings, text="새로고침", command=self._refresh_input_devices).grid(row=8, column=2, pady=(6, 0))
-        ttk.Label(settings, text="STT 장치").grid(row=9, column=0, sticky="w", pady=(6, 0))
+        self.input_device_combo.grid(row=1, column=1, sticky="ew", padx=8, pady=(8, 0))
+        ttk.Button(audio_tab, text="Refresh", command=self._refresh_input_devices, style="Tool.TButton").grid(row=1, column=2, pady=(8, 0))
+        ttk.Label(audio_tab, text="Device").grid(row=2, column=0, sticky="w", pady=(8, 0))
         ttk.Combobox(
-            settings,
+            audio_tab,
             textvariable=self.stt_device_var,
             values=("auto", "cuda", "cpu"),
             state="readonly",
             width=12,
-        ).grid(row=9, column=1, sticky="w", padx=6, pady=(6, 0))
-        ttk.Label(settings, text="STT compute").grid(row=10, column=0, sticky="w", pady=(6, 0))
+        ).grid(row=2, column=1, sticky="w", padx=8, pady=(8, 0))
+        ttk.Label(audio_tab, text="Compute").grid(row=2, column=2, sticky="e", pady=(8, 0))
         ttk.Combobox(
-            settings,
+            audio_tab,
             textvariable=self.stt_compute_var,
             values=("auto", "float16", "int8", "int8_float16", "float32"),
             state="readonly",
             width=12,
-        ).grid(row=10, column=1, sticky="w", padx=6, pady=(6, 0))
-        ttk.Label(settings, text="꼬리질문").grid(row=11, column=0, sticky="w", pady=(6, 0))
+        ).grid(row=2, column=3, sticky="w", padx=8, pady=(8, 0))
+
+        ttk.Label(ai_tab, text="Follow-up").grid(row=0, column=0, sticky="w")
         ttk.Combobox(
-            settings,
+            ai_tab,
             textvariable=self.followup_provider_var,
             values=("Auto", "Ollama", "Rules"),
             state="readonly",
             width=12,
-        ).grid(row=11, column=1, sticky="w", padx=6, pady=(6, 0))
-        ttk.Label(settings, text="Ollama 모델").grid(row=12, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(settings, textvariable=self.ollama_model_var).grid(row=12, column=1, sticky="ew", padx=6, pady=(6, 0))
-        ttk.Label(settings, text="Ollama host").grid(row=13, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(settings, textvariable=self.ollama_host_var).grid(row=13, column=1, sticky="ew", padx=6, pady=(6, 0))
+        ).grid(row=0, column=1, sticky="w", padx=8)
+        ttk.Label(ai_tab, text="Ollama model").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(ai_tab, textvariable=self.ollama_model_var).grid(row=1, column=1, columnspan=2, sticky="ew", padx=8, pady=(8, 0))
+        ttk.Label(ai_tab, text="Ollama host").grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(ai_tab, textvariable=self.ollama_host_var).grid(row=2, column=1, columnspan=2, sticky="ew", padx=8, pady=(8, 0))
 
-        session_frame = ttk.LabelFrame(root, text="면접 진행", padding=10)
-        session_frame.grid(row=1, column=1, rowspan=2, sticky="nsew")
+        ttk.Label(media_tab, text="Model folder").grid(row=0, column=0, sticky="w")
+        ttk.Entry(media_tab, textvariable=self.model_root_var).grid(row=0, column=1, sticky="ew", padx=8)
+        ttk.Button(media_tab, text="Browse", command=self._choose_model_root, style="Tool.TButton").grid(row=0, column=2)
+        ttk.Label(media_tab, text="Video file").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Entry(media_tab, textvariable=self.video_path_var).grid(row=1, column=1, sticky="ew", padx=8, pady=(8, 0))
+        ttk.Button(media_tab, text="Browse", command=self._choose_video_file, style="Tool.TButton").grid(row=1, column=2, pady=(8, 0))
+
+        session_frame = ttk.LabelFrame(right, text="Interview Room", padding=12, style="Panel.TLabelframe")
+        session_frame.grid(row=0, column=0, rowspan=4, sticky="nsew")
         session_frame.columnconfigure(0, weight=1)
         session_frame.rowconfigure(3, weight=1)
 
-        video_box = ttk.LabelFrame(session_frame, text="면접관 영상", padding=8)
+        video_box = ttk.LabelFrame(session_frame, text="Interviewer Video", padding=8, style="Panel.TLabelframe")
         video_box.grid(row=0, column=0, sticky="ew")
         video_box.columnconfigure(0, weight=1)
         self.video_player = InterviewerVideoPlayer(video_box, width=420, height=236)
@@ -228,29 +362,21 @@ class InterviewApp(tk.Tk):
 
         info = ttk.Frame(session_frame)
         info.grid(row=1, column=0, sticky="ew", pady=(10, 0))
-        info.columnconfigure(1, weight=1)
-        ttk.Label(info, text="진행").grid(row=0, column=0, sticky="w")
-        ttk.Label(info, textvariable=self.progress_var, font=("Segoe UI", 12, "bold")).grid(
-            row=0, column=1, sticky="e"
-        )
-        ttk.Label(info, text="답변 시간").grid(row=1, column=0, sticky="w", pady=(6, 0))
-        ttk.Label(info, textvariable=self.answer_timer_var, font=("Consolas", 14, "bold")).grid(
-            row=1, column=1, sticky="e", pady=(6, 0)
-        )
-        ttk.Label(info, text="전체 시간").grid(row=2, column=0, sticky="w", pady=(6, 0))
-        ttk.Label(info, textvariable=self.total_timer_var, font=("Consolas", 14, "bold")).grid(
-            row=2, column=1, sticky="e", pady=(6, 0)
-        )
+        for index in range(3):
+            info.columnconfigure(index, weight=1)
+        self._metric(info, "Progress", self.progress_var, 0)
+        self._metric(info, "Answer", self.answer_timer_var, 1)
+        self._metric(info, "Total", self.total_timer_var, 2)
 
-        question_box = ttk.LabelFrame(session_frame, text="현재 질문", padding=10)
+        question_box = ttk.LabelFrame(session_frame, text="Current Question", padding=10, style="Panel.TLabelframe")
         question_box.grid(row=2, column=0, sticky="ew", pady=10)
         question_box.columnconfigure(0, weight=1)
         ttk.Label(
             question_box,
             textvariable=self.current_question_var,
-            wraplength=360,
+            wraplength=500,
             justify="left",
-            font=("Segoe UI", 13),
+            font=("Segoe UI", 14),
         ).grid(row=0, column=0, sticky="ew")
 
         detail_tabs = ttk.Notebook(session_frame)
@@ -261,11 +387,11 @@ class InterviewApp(tk.Tk):
         for box in (memo_box, transcript_box, followup_box):
             box.columnconfigure(0, weight=1)
             box.rowconfigure(0, weight=1)
-        self.memo_text = tk.Text(memo_box, wrap="word", height=8)
+        self.memo_text = tk.Text(memo_box, wrap="word", height=4)
         self.memo_text.grid(row=0, column=0, sticky="nsew")
-        self.transcript_text = tk.Text(transcript_box, wrap="word", height=8)
+        self.transcript_text = tk.Text(transcript_box, wrap="word", height=4)
         self.transcript_text.grid(row=0, column=0, sticky="nsew")
-        self.followup_text = tk.Text(followup_box, wrap="word", height=8)
+        self.followup_text = tk.Text(followup_box, wrap="word", height=4)
         self.followup_text.grid(row=0, column=0, sticky="nsew")
         detail_tabs.add(memo_box, text="메모")
         detail_tabs.add(transcript_box, text="답변 STT")
@@ -276,31 +402,31 @@ class InterviewApp(tk.Tk):
         for index in range(4):
             controls.columnconfigure(index, weight=1)
 
-        self.prev_button = ttk.Button(controls, text="이전", command=self._previous_question)
-        self.next_button = ttk.Button(controls, text="다음", command=self._next_question)
-        self.repeat_button = ttk.Button(controls, text="다시 듣기", command=lambda: self._speak_current(repeat=True))
-        self.stop_button = ttk.Button(controls, text="TTS 중지", command=self._stop_tts)
-        self.restart_button = ttk.Button(controls, text="다시하기", command=self._restart_session)
-        self.open_folder_button = ttk.Button(controls, text="저장 폴더", command=self._open_session_folder)
-        self.sound_test_button = ttk.Button(controls, text="소리 테스트", command=self._test_system_sound)
-        self.diagnostics_button = ttk.Button(controls, text="런타임 진단", command=self._diagnose_tts)
-        self.record_button = ttk.Button(controls, text="녹음 시작", command=self._start_recording)
-        self.stop_record_button = ttk.Button(controls, text="녹음 중지 + STT", command=self._stop_recording_and_transcribe)
-        self.followup_button = ttk.Button(controls, text="꼬리질문 생성", command=self._generate_follow_up)
-        self.followup_speak_button = ttk.Button(controls, text="꼬리질문 듣기", command=self._speak_follow_up)
+        self.prev_button = ttk.Button(controls, text="Previous", command=self._previous_question, style="Tool.TButton")
+        self.next_button = ttk.Button(controls, text="Next", command=self._next_question, style="Tool.TButton")
+        self.repeat_button = ttk.Button(controls, text="Replay", command=lambda: self._speak_current(repeat=True), style="Tool.TButton")
+        self.stop_button = ttk.Button(controls, text="Stop TTS", command=self._stop_tts, style="Tool.TButton")
+        self.restart_button = ttk.Button(controls, text="Restart", command=self._restart_session, style="Tool.TButton")
+        self.open_folder_button = ttk.Button(controls, text="Session Folder", command=self._open_session_folder, style="Tool.TButton")
+        self.sound_test_button = ttk.Button(controls, text="Sound Test", command=self._test_system_sound, style="Tool.TButton")
+        self.diagnostics_button = ttk.Button(controls, text="Diagnostics", command=self._diagnose_tts, style="Tool.TButton")
+        self.record_button = ttk.Button(controls, text="Record", command=self._start_recording, style="Tool.TButton")
+        self.stop_record_button = ttk.Button(controls, text="Stop + STT", command=self._stop_recording_and_transcribe, style="Tool.TButton")
+        self.followup_button = ttk.Button(controls, text="Follow-up", command=self._generate_follow_up, style="Tool.TButton")
+        self.followup_speak_button = ttk.Button(controls, text="Read Follow-up", command=self._speak_follow_up, style="Tool.TButton")
 
         self.prev_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         self.next_button.grid(row=0, column=1, sticky="ew", padx=4)
         self.repeat_button.grid(row=0, column=2, sticky="ew", padx=4)
         self.stop_button.grid(row=0, column=3, sticky="ew", padx=(4, 0))
-        self.restart_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0), padx=(0, 4))
-        self.open_folder_button.grid(row=1, column=2, columnspan=2, sticky="ew", pady=(6, 0), padx=(4, 0))
-        self.sound_test_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0), padx=(0, 4))
-        self.diagnostics_button.grid(row=2, column=2, columnspan=2, sticky="ew", pady=(6, 0), padx=(4, 0))
-        self.record_button.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0), padx=(0, 4))
-        self.stop_record_button.grid(row=3, column=2, columnspan=2, sticky="ew", pady=(6, 0), padx=(4, 0))
-        self.followup_button.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(6, 0), padx=(0, 4))
-        self.followup_speak_button.grid(row=4, column=2, columnspan=2, sticky="ew", pady=(6, 0), padx=(4, 0))
+        self.record_button.grid(row=1, column=0, sticky="ew", pady=(6, 0), padx=(0, 4))
+        self.stop_record_button.grid(row=1, column=1, sticky="ew", pady=(6, 0), padx=4)
+        self.followup_button.grid(row=1, column=2, sticky="ew", pady=(6, 0), padx=4)
+        self.followup_speak_button.grid(row=1, column=3, sticky="ew", pady=(6, 0), padx=(4, 0))
+        self.restart_button.grid(row=2, column=0, sticky="ew", pady=(6, 0), padx=(0, 4))
+        self.open_folder_button.grid(row=2, column=1, sticky="ew", pady=(6, 0), padx=4)
+        self.sound_test_button.grid(row=2, column=2, sticky="ew", pady=(6, 0), padx=4)
+        self.diagnostics_button.grid(row=2, column=3, sticky="ew", pady=(6, 0), padx=(4, 0))
 
     def _set_session_controls(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
@@ -342,6 +468,33 @@ class InterviewApp(tk.Tk):
                 if row and row[0].strip():
                     rows.append(row[0].strip())
         return "\n".join(rows)
+
+    def _on_language_mode_changed(self) -> None:
+        language = self.interview_language_var.get()
+        names = question_set_names(language)
+        selected = names[0]
+        self.question_set_var.set(selected)
+        self.question_set_combo.configure(values=names)
+        self.language_var.set(language)
+        self._replace_question_text(default_questions_text(language, selected))
+        self.status_var.set("한국어 질문셋을 불러왔습니다." if language == "Korean" else "English question set loaded.")
+
+    def _apply_selected_question_set(self) -> None:
+        language = self.interview_language_var.get()
+        set_name = self.question_set_var.get()
+        self.language_var.set(language)
+        self._replace_question_text(default_questions_text(language, set_name))
+        self.status_var.set(f"질문셋을 불러왔습니다: {set_name}")
+
+    def _replace_question_text(self, content: str) -> None:
+        self.question_text.delete("1.0", "end")
+        self.question_text.insert("1.0", content)
+
+    def _metric(self, parent: tk.Widget, label: str, variable: tk.StringVar, column: int) -> None:
+        box = ttk.Frame(parent, padding=(8, 6), style="Surface.TFrame")
+        box.grid(row=0, column=column, sticky="ew", padx=(0 if column == 0 else 6, 0))
+        ttk.Label(box, text=label, style="Muted.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(box, textvariable=variable, style="Metric.TLabel").grid(row=1, column=0, sticky="w")
 
     def _input_device_labels(self) -> tuple[str, ...]:
         try:
@@ -417,6 +570,8 @@ class InterviewApp(tk.Tk):
         self._speak_current(repeat=False)
 
     def _apply_config_from_ui(self, save: bool = True) -> None:
+        self.config_model.interview_language = self.interview_language_var.get()
+        self.config_model.question_set_name = self.question_set_var.get()
         self.config_model.model_id = self.model_var.get()
         self.config_model.tts_backend = self.tts_backend_var.get()
         self.config_model.model_root = Path(self.model_root_var.get()).expanduser()
