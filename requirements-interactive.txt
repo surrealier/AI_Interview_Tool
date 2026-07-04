@@ -1,7 +1,10 @@
 # Optional dependencies for interviewer video playback, microphone recording, and local STT.
+# Install with the shared pins:
+#   python -m pip install -r requirements-interactive.txt -c constraints.txt
 opencv-python>=4.9.0
 pillow>=10.0.0
 sounddevice>=0.4.6
 soundfile>=0.12.1
 numpy>=1.26.0
 faster-whisper>=1.0.0
+ctranslate2>=4.0

@@ -1,3 +1,11 @@
-qwen-tts
+# Qwen3-TTS runtime. Install with the shared pins:
+#   python -m pip install -r requirements-qwen.txt -c constraints.txt
+#
+# torch: the release build ships the CUDA 12.4 wheel. For a CUDA install use
+#   python -m pip install torch --index-url https://download.pytorch.org/whl/cu124
+# before installing this file; plain PyPI torch (CPU) also works, only slower.
+qwen-tts==0.1.1
+torch>=2.6.0
+transformers>=4.57
 soundfile>=0.12.1
 huggingface-hub>=0.34.0,<1.0
