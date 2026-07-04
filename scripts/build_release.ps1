@@ -1,6 +1,6 @@
 param(
     [string]$Python = "python",
-    [string]$Version = "v0.9.0-beta",
+    [string]$Version = "",
     [string]$OutputRoot = ".\releases",
     [switch]$SkipBuild
 )
@@ -8,6 +8,18 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+
+if (-not $Version) {
+    Push-Location $ProjectRoot
+    try {
+        $Version = (& $Python -m ai_interviewer.release_check --print-display-version).Trim()
+    } finally {
+        Pop-Location
+    }
+    if (-not $Version) {
+        throw "Could not determine version from ai_interviewer.release_check --print-display-version"
+    }
+}
 $DistDir = Join-Path $ProjectRoot "dist\AIInterview"
 $OutputDir = Join-Path $ProjectRoot $OutputRoot
 $ZipPath = Join-Path $OutputDir "AIInterview-$Version-win64.zip"
