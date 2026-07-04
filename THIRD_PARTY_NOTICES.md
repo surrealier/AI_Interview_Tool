@@ -7,6 +7,7 @@ runtime profile.
 
 - Python standard library
 - Tkinter
+- `ttkbootstrap`
 - PyInstaller for Windows packaging
 
 ## Qwen TTS Profile

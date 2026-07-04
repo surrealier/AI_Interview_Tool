@@ -1,7 +1,10 @@
 from ai_interviewer.default_questions import (
     ENGLISH_MODE,
+    INTERVIEW_TYPE_TECHNICAL,
     KOREAN_MODE,
     default_question_set_name,
+    interview_type_options,
+    question_set_for_interview_type,
     question_set_names,
     questions_for_set,
     questions_text,
@@ -25,3 +28,12 @@ def test_question_set_names_and_text_are_numbered() -> None:
     assert "Core HR Interview" in question_set_names(ENGLISH_MODE)
     assert questions_text(KOREAN_MODE).splitlines()[0].startswith("1. ")
     assert questions_text(ENGLISH_MODE).splitlines()[0].startswith("1. ")
+
+
+def test_technical_question_pack_is_available_by_language() -> None:
+    assert question_set_for_interview_type(KOREAN_MODE, INTERVIEW_TYPE_TECHNICAL) == "기술 면접"
+    assert question_set_for_interview_type(ENGLISH_MODE, INTERVIEW_TYPE_TECHNICAL) == "Technical Interview"
+    assert len(questions_for_set(KOREAN_MODE, "기술 면접")) == 20
+    assert len(questions_for_set(ENGLISH_MODE, "Technical Interview")) == 20
+    assert any(label == "기술 면접" for _key, label in interview_type_options(KOREAN_MODE))
+    assert any(label == "Technical Interview" for _key, label in interview_type_options(ENGLISH_MODE))

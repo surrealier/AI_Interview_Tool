@@ -72,11 +72,37 @@ class QwenTTSProvider:
             language = detect_language(text)
 
         if language == "Korean":
-            speaker = self.config.korean_speaker
+            speaker = self.config.selected_speaker or self.config.korean_speaker
         else:
             language = "English"
-            speaker = self.config.english_speaker
+            speaker = self.config.selected_speaker or self.config.english_speaker
         return language, speaker
+
+    def sound_test(self, language: str, speaker: str) -> SpeechResult:
+        text = (
+            "안녕하세요. 지금부터 차분하고 정중한 면접을 시작하겠습니다."
+            if language == "Korean"
+            else "Hello. We will now begin a calm and professional interview."
+        )
+        return self.speak(text=text, cache_key=f"sound-test-{language}-{speaker}", language=language, speaker=speaker)
+
+    def supported_speakers(self) -> tuple[str, ...]:
+        try:
+            model = self._load_model()
+            if hasattr(model, "get_supported_speakers"):
+                return tuple(str(item) for item in model.get_supported_speakers())
+        except Exception:
+            return ()
+        return ()
+
+    def supported_languages(self) -> tuple[str, ...]:
+        try:
+            model = self._load_model()
+            if hasattr(model, "get_supported_languages"):
+                return tuple(str(item) for item in model.get_supported_languages())
+        except Exception:
+            return ()
+        return ()
 
     def speak(
         self,

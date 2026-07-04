@@ -8,6 +8,7 @@ AI Interviewer v0.9.0-beta is the first commercial beta candidate.
 
 - Offline-first Windows desktop interview practice app.
 - Korean and English default HR question set.
+- Step-by-step setup wizard for language, TTS model, speaker, interview type, question source, sound test, and preferences.
 - Qwen3-TTS and Windows SAPI TTS backends.
 - Optional interviewer video panel with built-in animated fallback.
 - Optional microphone recording, faster-whisper STT, and follow-up question generation.
@@ -19,6 +20,8 @@ AI Interviewer v0.9.0-beta is the first commercial beta candidate.
 ### Changed
 
 - Windows SAPI fallback is now off by default. If Qwen3-TTS fails, the app shows an error unless the user explicitly enables fallback.
+- Qwen3-TTS models are no longer preloaded when the app opens. Loading starts only from sound test or interview start.
+- Speaker selection is now a supported voice selector instead of free-form text input.
 - Session saves use temp files and atomic replace to reduce corruption risk.
 - Temporary Windows SAPI text sidecar files are deleted after fallback synthesis.
 

@@ -89,6 +89,12 @@ class AppConfig:
     followup_provider: str = "Auto"
     ollama_model: str = ""
     ollama_host: str = "http://127.0.0.1:11434"
+    ui_theme: str = "light"
+    setup_completed: bool = False
+    interview_type: str = "hr"
+    selected_speaker: str = "Sohee"
+    sound_test_required: bool = True
+    enable_stt: bool = True
     config_path: Path = field(default_factory=default_config_path, repr=False)
 
     def local_model_dir(self) -> Path:

@@ -15,6 +15,11 @@ def test_config_save_and_load_round_trip(tmp_path) -> None:
     config.input_device = "3: USB Mic"
     config.followup_provider = "Ollama"
     config.ollama_model = "qwen2.5:7b"
+    config.setup_completed = True
+    config.interview_type = "technical"
+    config.selected_speaker = "Aiden"
+    config.sound_test_required = False
+    config.enable_stt = False
     config.save()
 
     loaded = AppConfig.load(config_path)
@@ -27,3 +32,8 @@ def test_config_save_and_load_round_trip(tmp_path) -> None:
     assert loaded.input_device == "3: USB Mic"
     assert loaded.followup_provider == "Ollama"
     assert loaded.ollama_model == "qwen2.5:7b"
+    assert loaded.setup_completed is True
+    assert loaded.interview_type == "technical"
+    assert loaded.selected_speaker == "Aiden"
+    assert loaded.sound_test_required is False
+    assert loaded.enable_stt is False

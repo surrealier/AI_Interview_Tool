@@ -25,18 +25,18 @@ class InterviewerVideoPlayer:
         self._fullscreen_label: tk.Label | None = None
         self._fullscreen_photo: Any | None = None
 
-        self.frame = ttk.Frame(parent)
+        self.frame = ttk.Frame(parent, style="Stage.TFrame")
         self.frame.columnconfigure(0, weight=1)
         self.frame.rowconfigure(0, weight=1)
         self.frame.configure(width=width, height=height)
         self.frame.grid_propagate(False)
         self.label = tk.Label(
             self.frame,
-            bg="#111111",
-            fg="#d6d6d6",
+            bg="#050814",
+            fg="#95a3b8",
             anchor="center",
             justify="center",
-            text="면접관 영상 대기",
+            text="INTERVIEWER STAGE\nDouble-click for fullscreen",
         )
         self.label.grid(row=0, column=0, sticky="nsew")
         self.label.bind("<Double-Button-1>", lambda _event: self.toggle_fullscreen())
@@ -48,7 +48,7 @@ class InterviewerVideoPlayer:
     def set_video_path(self, path: Path) -> None:
         self.video_path = Path(path)
         if not self._running:
-            self._show_placeholder("면접관 영상 대기")
+            self._show_placeholder("INTERVIEWER STAGE\nDouble-click for fullscreen")
 
     def start(self) -> None:
         if self._running:
@@ -60,15 +60,15 @@ class InterviewerVideoPlayer:
                 self._synthetic_frame = 0
                 self._tick_synthetic()
                 return
-            self._show_placeholder("영상 파일 없음\nassets/interviewer.mp4 또는 영상 파일을 선택하세요.")
+            self._show_placeholder("Video file not found\nSelect a file in Media settings.")
             return
         if not self._load_dependencies():
-            self._show_placeholder("영상 재생 의존성 없음\nrequirements-interactive.txt 설치 필요")
+            self._show_placeholder("Video runtime missing\nInstall requirements-interactive.txt")
             return
 
         self._capture = self._cv2.VideoCapture(str(self.video_path))
         if not self._capture or not self._capture.isOpened():
-            self._show_placeholder("영상 파일을 열 수 없습니다.")
+            self._show_placeholder("Cannot open the selected video file.")
             self._release_capture()
             return
 
@@ -80,7 +80,7 @@ class InterviewerVideoPlayer:
         self._running = False
         self._synthetic_mode = False
         self._release_capture()
-        self._show_placeholder("면접관 영상 대기")
+        self._show_placeholder("INTERVIEWER STAGE\nDouble-click for fullscreen")
 
     def destroy(self) -> None:
         self.stop()
@@ -101,7 +101,7 @@ class InterviewerVideoPlayer:
         window.protocol("WM_DELETE_WINDOW", self._close_fullscreen)
         window.columnconfigure(0, weight=1)
         window.rowconfigure(0, weight=1)
-        label = tk.Label(window, bg="#050505", fg="#f5f5f5", text="면접관 영상 대기")
+        label = tk.Label(window, bg="#050505", fg="#f5f5f5", text="Interviewer video ready")
         label.grid(row=0, column=0, sticky="nsew")
         self._fullscreen = window
         self._fullscreen_label = label
@@ -140,19 +140,20 @@ class InterviewerVideoPlayer:
 
         frame = self._synthetic_frame
         self._synthetic_frame += 1
-        image = self._image.new("RGB", (self.width, self.height), (26, 29, 33))
+        image = self._image.new("RGB", (self.width, self.height), (12, 17, 29))
         draw = self._image_draw.Draw(image)
 
         center_x = self.width // 2
         head_top = int(self.height * 0.16)
         head_bottom = int(self.height * 0.58)
-        face_color = (226, 188, 156)
-        hair_color = (42, 35, 32)
-        suit_color = (43, 55, 73)
-        shirt_color = (238, 241, 244)
-        tie_color = (96, 54, 54)
+        face_color = (228, 190, 158)
+        hair_color = (36, 35, 39)
+        suit_color = (25, 43, 73)
+        shirt_color = (242, 245, 249)
+        tie_color = (32, 84, 214)
 
-        draw.rectangle((0, 0, self.width, self.height), fill=(25, 28, 32))
+        draw.rectangle((0, 0, self.width, self.height), fill=(12, 17, 29))
+        draw.rectangle((0, int(self.height * 0.64), self.width, self.height), fill=(16, 24, 39))
         draw.ellipse((center_x - 84, head_top - 20, center_x + 84, head_top + 70), fill=hair_color)
         draw.ellipse((center_x - 72, head_top, center_x + 72, head_bottom), fill=face_color)
         draw.polygon(

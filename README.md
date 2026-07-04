@@ -11,6 +11,7 @@ Current release target: `v0.9.0-beta`.
 
 - Windows 10/11 single-user desktop app.
 - Korean and English default HR question set.
+- Step-by-step setup wizard for language, TTS model, speaker, interview type, question source, sound test, and preferences.
 - Question prefix cleanup such as `1.`, `1)`, `1.2.`, `Q1.`.
 - Qwen3-TTS first, Windows SAPI optional fallback.
 - Interviewer video panel with built-in animated fallback.
@@ -24,6 +25,7 @@ Current release target: `v0.9.0-beta`.
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
+python -m pip install -r requirements.txt
 python -m pip install -r requirements-dev.txt
 python -m pip install -r requirements-interactive.txt
 python -m pip install -r requirements-qwen.txt
@@ -36,6 +38,7 @@ of creating `.venv`.
 ```cmd
 conda activate torch251
 cd /d C:\bongkj\Projects\AI_Interview
+python -m pip install -r requirements.txt
 python -m pip install -r requirements-qwen.txt
 pythonw -m ai_interviewer
 ```
@@ -76,6 +79,9 @@ python -m ai_interviewer.release_check --strict
 Windows SAPI fallback is off by default. If Qwen fails, the app shows an error
 unless the fallback checkbox is explicitly enabled.
 
+Qwen model weights are not loaded when the app opens. The selected model is
+loaded only when you run the setup sound test or start the interview.
+
 ## Local Data
 
 Sessions:
@@ -97,6 +103,7 @@ personal data. See `PRIVACY.md`.
 ## Build EXE
 
 ```powershell
+python -m pip install -r requirements.txt
 python -m pip install -r requirements-dev.txt
 pyinstaller --noconfirm interview_app.spec
 ```

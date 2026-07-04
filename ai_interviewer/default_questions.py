@@ -6,6 +6,11 @@ from collections.abc import Mapping
 KOREAN_MODE = "Korean"
 ENGLISH_MODE = "English"
 DEFAULT_QUESTION_SET_NAME = "기본 인성 면접"
+INTERVIEW_TYPE_HR = "hr"
+INTERVIEW_TYPE_STAR = "star"
+INTERVIEW_TYPE_ROLE = "role"
+INTERVIEW_TYPE_TECHNICAL = "technical"
+INTERVIEW_TYPES = (INTERVIEW_TYPE_HR, INTERVIEW_TYPE_STAR, INTERVIEW_TYPE_ROLE, INTERVIEW_TYPE_TECHNICAL)
 
 
 QUESTION_SETS: Mapping[str, Mapping[str, list[str]]] = {
@@ -76,6 +81,28 @@ QUESTION_SETS: Mapping[str, Mapping[str, list[str]]] = {
             "입사 후 온보딩 기간에 가장 집중하고 싶은 부분은 무엇인가요?",
             "이 직무를 통해 장기적으로 어떤 전문가가 되고 싶나요?",
         ],
+        "기술 면접": [
+            "최근 진행한 기술 프로젝트의 목표와 본인의 역할을 설명해 주세요.",
+            "해당 프로젝트에서 가장 중요한 기술적 의사결정은 무엇이었나요?",
+            "성능 병목을 발견하고 개선했던 경험을 말씀해 주세요.",
+            "장애나 버그의 원인을 추적할 때 어떤 순서로 접근하나요?",
+            "코드 품질을 유지하기 위해 어떤 기준과 도구를 사용하나요?",
+            "테스트를 작성할 때 우선순위를 어떻게 정하나요?",
+            "기술 부채를 발견했을 때 어떻게 설득하고 해결하나요?",
+            "API나 모듈 인터페이스를 설계할 때 가장 중요하게 보는 점은 무엇인가요?",
+            "데이터 모델이나 스키마를 바꿔야 할 때 어떤 리스크를 점검하나요?",
+            "보안이나 개인정보 관점에서 개발 중 주의하는 부분은 무엇인가요?",
+            "새로운 기술을 도입할 때 어떤 기준으로 검토하나요?",
+            "운영 환경에서 재현이 어려운 문제를 어떻게 해결했나요?",
+            "로그, 메트릭, 알림을 설계할 때 중요하게 보는 점은 무엇인가요?",
+            "동시성이나 비동기 처리 문제를 다뤄본 경험을 설명해 주세요.",
+            "대규모 코드베이스에서 변경 범위를 안전하게 줄이는 방법은 무엇인가요?",
+            "리뷰에서 의견이 갈릴 때 어떤 기준으로 결론을 내리나요?",
+            "사용자 경험과 기술 구현 난이도가 충돌할 때 어떻게 판단하나요?",
+            "최근 학습한 기술 중 실제 업무에 적용할 만한 것을 설명해 주세요.",
+            "본인의 기술적 강점과 보완해야 할 점을 말씀해 주세요.",
+            "지금까지 만든 것 중 기술적으로 가장 자랑스러운 결과물은 무엇인가요?",
+        ],
     },
     ENGLISH_MODE: {
         "Core HR Interview": [
@@ -144,11 +171,63 @@ QUESTION_SETS: Mapping[str, Mapping[str, list[str]]] = {
             "What would you focus on during your onboarding period?",
             "What kind of professional do you want to become through this role?",
         ],
+        "Technical Interview": [
+            "Describe a recent technical project and your role in it.",
+            "What was the most important technical decision in that project?",
+            "Tell me about a time you found and improved a performance bottleneck.",
+            "How do you investigate the root cause of a bug or incident?",
+            "What standards or tools do you use to maintain code quality?",
+            "How do you prioritize what tests to write?",
+            "How do you identify and address technical debt?",
+            "What matters most when designing an API or module interface?",
+            "What risks do you check before changing a data model or schema?",
+            "What security or privacy concerns do you consider while building software?",
+            "How do you evaluate whether to introduce a new technology?",
+            "Tell me about a production issue that was hard to reproduce.",
+            "What do you consider when designing logs, metrics, and alerts?",
+            "Describe your experience with concurrency or asynchronous processing.",
+            "How do you reduce the risk of changes in a large codebase?",
+            "How do you resolve disagreements during code review?",
+            "How do you balance user experience against implementation complexity?",
+            "What recent technology have you learned that could be useful at work?",
+            "What are your technical strengths and areas to improve?",
+            "What technical work are you most proud of?",
+        ],
     },
 }
 
 
 QUESTION_MODES = (KOREAN_MODE, ENGLISH_MODE)
+
+INTERVIEW_TYPE_LABELS: Mapping[str, Mapping[str, str]] = {
+    KOREAN_MODE: {
+        INTERVIEW_TYPE_HR: "인성/HR",
+        INTERVIEW_TYPE_STAR: "경험 STAR",
+        INTERVIEW_TYPE_ROLE: "직무 적합성",
+        INTERVIEW_TYPE_TECHNICAL: "기술 면접",
+    },
+    ENGLISH_MODE: {
+        INTERVIEW_TYPE_HR: "HR Interview",
+        INTERVIEW_TYPE_STAR: "Behavioral STAR",
+        INTERVIEW_TYPE_ROLE: "Role Fit",
+        INTERVIEW_TYPE_TECHNICAL: "Technical Interview",
+    },
+}
+
+INTERVIEW_TYPE_TO_SET: Mapping[str, Mapping[str, str]] = {
+    KOREAN_MODE: {
+        INTERVIEW_TYPE_HR: "기본 인성 면접",
+        INTERVIEW_TYPE_STAR: "경험 기반 STAR",
+        INTERVIEW_TYPE_ROLE: "직무 적합성",
+        INTERVIEW_TYPE_TECHNICAL: "기술 면접",
+    },
+    ENGLISH_MODE: {
+        INTERVIEW_TYPE_HR: "Core HR Interview",
+        INTERVIEW_TYPE_STAR: "Behavioral STAR",
+        INTERVIEW_TYPE_ROLE: "Role Fit",
+        INTERVIEW_TYPE_TECHNICAL: "Technical Interview",
+    },
+}
 
 
 def question_set_names(language: str) -> tuple[str, ...]:
@@ -157,6 +236,20 @@ def question_set_names(language: str) -> tuple[str, ...]:
 
 def default_question_set_name(language: str) -> str:
     return question_set_names(language)[0]
+
+
+def interview_type_label(language: str, interview_type: str) -> str:
+    labels = INTERVIEW_TYPE_LABELS.get(language, INTERVIEW_TYPE_LABELS[KOREAN_MODE])
+    return labels.get(interview_type, labels[INTERVIEW_TYPE_HR])
+
+
+def question_set_for_interview_type(language: str, interview_type: str) -> str:
+    mapping = INTERVIEW_TYPE_TO_SET.get(language, INTERVIEW_TYPE_TO_SET[KOREAN_MODE])
+    return mapping.get(interview_type, mapping[INTERVIEW_TYPE_HR])
+
+
+def interview_type_options(language: str) -> tuple[tuple[str, str], ...]:
+    return tuple((interview_type, interview_type_label(language, interview_type)) for interview_type in INTERVIEW_TYPES)
 
 
 def questions_for_set(language: str, set_name: str | None = None) -> list[str]:

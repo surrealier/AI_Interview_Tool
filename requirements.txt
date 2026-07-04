@@ -1,4 +1,5 @@
-# Core desktop runtime uses the Python standard library on Windows.
+# Core desktop runtime uses the Python standard library on Windows plus the UI shell.
+ttkbootstrap>=1.10.1
 # Install optional profiles as needed:
 #   python -m pip install -r requirements-interactive.txt
 #   python -m pip install -r requirements-qwen.txt

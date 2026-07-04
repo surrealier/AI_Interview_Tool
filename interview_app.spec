@@ -4,7 +4,17 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
 hiddenimports = []
-for package in ("qwen_tts", "transformers", "tokenizers", "soundfile", "cv2", "PIL", "sounddevice", "faster_whisper"):
+for package in (
+    "qwen_tts",
+    "transformers",
+    "tokenizers",
+    "soundfile",
+    "cv2",
+    "PIL",
+    "sounddevice",
+    "faster_whisper",
+    "ttkbootstrap",
+):
     try:
         hiddenimports += collect_submodules(package)
     except Exception:
@@ -26,6 +36,10 @@ datas = [
 ]
 try:
     datas += collect_data_files("qwen_tts", include_py_files=False)
+except Exception:
+    pass
+try:
+    datas += collect_data_files("ttkbootstrap", include_py_files=False)
 except Exception:
     pass
 

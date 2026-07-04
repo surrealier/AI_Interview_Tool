@@ -34,6 +34,7 @@ that environment instead of creating `.venv`.
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
+python -m pip install -r requirements.txt
 python -m pip install -r requirements-dev.txt
 python -m pip install -r requirements-interactive.txt
 python -m pip install -r requirements-qwen.txt
@@ -66,6 +67,7 @@ For better tone control, use:
 ## EXE Build
 
 ```powershell
+python -m pip install -r requirements.txt
 python -m pip install -r requirements-dev.txt
 pyinstaller --noconfirm interview_app.spec
 ```
