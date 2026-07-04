@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 import os
 import threading
 import time
@@ -27,6 +28,7 @@ from ai_interviewer.default_questions import (
 from ai_interviewer.default_questions import default_question_set_name, question_set_names
 from ai_interviewer.diagnostics import collect_runtime_diagnostics, diagnostics_text
 from ai_interviewer.engine import InterviewEngine
+from ai_interviewer.error_dialog import show_crash_dialog
 from ai_interviewer.followup import generate_follow_up_question
 from ai_interviewer.question_parser import detect_language, parse_questions
 from ai_interviewer.stt import (
@@ -59,6 +61,9 @@ from ai_interviewer.ui_components import (
 )
 from ai_interviewer.ui_theme import LIGHT_THEME, apply_ttk_styles
 from ai_interviewer.video_player import InterviewerVideoPlayer
+
+
+logger = logging.getLogger(__name__)
 
 
 class InterviewApp(tk.Tk):
@@ -98,6 +103,10 @@ class InterviewApp(tk.Tk):
 
     def _set_state(self, state: SessionState) -> None:
         self.session_state = state
+
+    def report_callback_exception(self, exc_type, exc, tb) -> None:  # type: ignore[override]
+        logger.critical("Unhandled exception in Tk callback", exc_info=(exc_type, exc, tb))
+        show_crash_dialog(exc_type, exc, tb)
 
     def _configure_styles(self) -> None:
         self.ui_theme = LIGHT_THEME
@@ -1168,7 +1177,8 @@ class InterviewApp(tk.Tk):
     def _on_preload_done(self) -> None:
         self.preload_running = False
         self._set_state(SessionState.READY)
-        self.runtime_badge_var.set("Runtime: Ready")
+        cpu_mode = self.preload_provider is not None and self.preload_provider.is_cpu_runtime
+        self.runtime_badge_var.set("Runtime: Ready (CPU)" if cpu_mode else "Runtime: Ready")
         if self.engine is None:
             if self.config_model.supports_style_instruction():
                 self.status_var.set("Qwen3-TTS 모델 준비 완료. 면접관 말투 지시가 적용됩니다.")
@@ -1176,6 +1186,8 @@ class InterviewApp(tk.Tk):
             else:
                 self.status_var.set("Qwen3-TTS 0.6B 준비 완료. 말투 지시는 1.7B 모델에서 적용됩니다.")
                 self.warning_var.set("0.6B 모델은 말투 지시 적용이 제한됩니다. 1.7B 모델을 권장합니다.")
+            if cpu_mode:
+                self.warning_var.set("CPU 모드로 실행 중입니다. 음성 생성이 느릴 수 있습니다.")
 
     def _on_preload_error(self, exc: Exception) -> None:
         self.preload_running = False

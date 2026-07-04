@@ -44,7 +44,10 @@ def interview_app(monkeypatch: pytest.MonkeyPatch, tmp_path):
     monkeypatch.setattr(gui.QwenTTSProvider, "preload", lambda _self: pytest.fail("preload should not run on app startup"))
     monkeypatch.setattr(gui.InterviewApp, "_run_startup_diagnostics", lambda _self: None)
 
-    app = gui.InterviewApp()
+    try:
+        app = gui.InterviewApp()
+    except tk.TclError as exc:
+        pytest.skip(f"Tk could not be initialized: {exc}")
     app.withdraw()
     app.update_idletasks()
     yield app
