@@ -12,7 +12,13 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from ai_interviewer.config import AppConfig, QWEN_BACKEND, WINDOWS_SAPI_BACKEND
+from ai_interviewer.config import (
+    AppConfig,
+    ModelNotInstalledError,
+    QWEN_BACKEND,
+    WINDOWS_SAPI_BACKEND,
+    is_model_installed,
+)
 from ai_interviewer.question_parser import detect_language
 from ai_interviewer.tts.base import SpeechResult
 
@@ -61,6 +67,8 @@ class QwenTTSProvider:
         self._model: Any | None = None
         self._last_backend = "qwen3-tts"
         self._last_warning = ""
+        self._resolved_device: str | None = None
+        self._resolved_dtype: str | None = None
 
     def preload(self) -> None:
         if self.config.tts_backend == QWEN_BACKEND:
@@ -215,9 +223,11 @@ class QwenTTSProvider:
         results: list[str] = []
         model_dir = self.config.local_model_dir()
         tokenizer_dir = self.config.local_tokenizer_dir()
+        model_ok = is_model_installed(self.config.model_root, self.config.model_id)
+        tokenizer_ok = tokenizer_dir.exists()
         results.append(f"Python executable: {sys.executable}")
-        results.append(f"Model folder: {'OK' if model_dir.exists() else 'MISSING'} - {model_dir}")
-        results.append(f"Tokenizer folder: {'OK' if tokenizer_dir.exists() else 'MISSING'} - {tokenizer_dir}")
+        results.append(f"Model folder: {'OK' if model_ok else 'MISSING'} - {model_dir}")
+        results.append(f"Tokenizer folder: {'OK' if tokenizer_ok else 'MISSING'} - {tokenizer_dir}")
         results.append(f"qwen_tts package: {'OK' if importlib.util.find_spec('qwen_tts') else 'MISSING'}")
         results.append(f"soundfile package: {'OK' if importlib.util.find_spec('soundfile') else 'MISSING'}")
         torch_spec = importlib.util.find_spec("torch")
@@ -243,18 +253,48 @@ class QwenTTSProvider:
             return None
         return self.config.default_instruct
 
+    def _resolve_runtime(self, torch: Any) -> tuple[str, str]:
+        device_map = self.config.device_map
+        dtype_name = self.config.torch_dtype
+        try:
+            cuda_ok = bool(torch.cuda.is_available())
+        except Exception:
+            cuda_ok = False
+
+        if device_map == "auto":
+            device_map = "cuda:0" if cuda_ok else "cpu"
+        elif device_map.startswith("cuda") and not cuda_ok:
+            logger.warning(
+                "Configured device %s requires CUDA, which is unavailable; using CPU instead.",
+                self.config.device_map,
+            )
+            device_map = "cpu"
+
+        if dtype_name == "auto":
+            dtype_name = "bfloat16" if device_map.startswith("cuda") else "float32"
+        return device_map, dtype_name
+
+    def runtime_summary(self) -> str:
+        if self._resolved_device is None:
+            return ""
+        return f"{self._resolved_device}/{self._resolved_dtype}"
+
+    @property
+    def is_cpu_runtime(self) -> bool:
+        return self._resolved_device == "cpu"
+
     def _load_model(self) -> Any:
         if self._model is not None:
             return self._model
 
-        source = self.config.model_source()
+        try:
+            source = self.config.model_source()
+        except ModelNotInstalledError as exc:
+            raise TTSProviderError(
+                f"Qwen3-TTS model files were not found ({exc.model_id}). "
+                "Download the model from the setup wizard or settings."
+            ) from exc
         attention = "flash_attention_2" if self.config.use_flash_attention else "sdpa"
-        cache_key = (source, self.config.device_map, self.config.torch_dtype, attention)
-        with self._cache_lock:
-            cached = self._model_cache.get(cache_key)
-            if cached is not None:
-                self._model = cached
-                return self._model
 
         try:
             with _suppress_noisy_native_output():
@@ -266,7 +306,18 @@ class QwenTTSProvider:
                 "Run: python -m pip install -r requirements-qwen.txt"
             ) from exc
 
-        dtype = getattr(torch, self.config.torch_dtype, torch.bfloat16)
+        device_map, dtype_name = self._resolve_runtime(torch)
+        self._resolved_device = device_map
+        self._resolved_dtype = dtype_name
+        cache_key = (source, device_map, dtype_name, attention)
+        with self._cache_lock:
+            cached = self._model_cache.get(cache_key)
+            if cached is not None:
+                self._model = cached
+                return self._model
+
+        dtype_fallback = torch.float32 if device_map == "cpu" else torch.bfloat16
+        dtype = getattr(torch, dtype_name, dtype_fallback)
 
         try:
             with self._cache_lock:
@@ -277,7 +328,7 @@ class QwenTTSProvider:
                 with _suppress_noisy_native_output():
                     self._model = Qwen3TTSModel.from_pretrained(
                         source,
-                        device_map=self.config.device_map,
+                        device_map=device_map,
                         dtype=dtype,
                         attn_implementation=attention,
                     )
@@ -285,7 +336,7 @@ class QwenTTSProvider:
         except Exception as first_exc:  # pragma: no cover - depends on external model runtime
             if attention == "flash_attention_2":
                 try:
-                    fallback_key = (source, self.config.device_map, self.config.torch_dtype, "sdpa")
+                    fallback_key = (source, device_map, dtype_name, "sdpa")
                     with self._cache_lock:
                         cached = self._model_cache.get(fallback_key)
                         if cached is not None:
@@ -294,7 +345,7 @@ class QwenTTSProvider:
                         with _suppress_noisy_native_output():
                             self._model = Qwen3TTSModel.from_pretrained(
                                 source,
-                                device_map=self.config.device_map,
+                                device_map=device_map,
                                 dtype=dtype,
                                 attn_implementation="sdpa",
                             )

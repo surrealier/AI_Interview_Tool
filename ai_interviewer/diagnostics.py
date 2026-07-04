@@ -5,7 +5,14 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ai_interviewer.config import AppConfig, QWEN_BACKEND, WINDOWS_SAPI_BACKEND, default_log_path
+from ai_interviewer.config import (
+    AppConfig,
+    QWEN_BACKEND,
+    TOKENIZER_MODEL_ID,
+    WINDOWS_SAPI_BACKEND,
+    default_log_path,
+    is_model_installed,
+)
 
 
 STATUS_OK = "OK"
@@ -85,20 +92,22 @@ def _tts_checks(config: AppConfig) -> list[DiagnosticItem]:
 
     model_dir = config.local_model_dir()
     tokenizer_dir = config.local_tokenizer_dir()
+    model_installed = is_model_installed(config.model_root, config.model_id)
+    tokenizer_installed = is_model_installed(config.model_root, TOKENIZER_MODEL_ID)
     items.append(
         DiagnosticItem(
             "Qwen 모델",
-            STATUS_OK if model_dir.exists() else STATUS_WARN,
-            str(model_dir) if model_dir.exists() else f"로컬 모델 없음, Hub/model id 사용 예정: {config.model_id}",
-            required=False,
+            STATUS_OK if model_installed else STATUS_FAIL,
+            str(model_dir) if model_installed else f"로컬 모델 없음 — 앱에서 다운로드 필요: {config.model_id}",
+            required=True,
         )
     )
     items.append(
         DiagnosticItem(
             "Qwen tokenizer",
-            STATUS_OK if tokenizer_dir.exists() else STATUS_WARN,
-            str(tokenizer_dir) if tokenizer_dir.exists() else "로컬 tokenizer 없음",
-            required=False,
+            STATUS_OK if tokenizer_installed else STATUS_FAIL,
+            str(tokenizer_dir) if tokenizer_installed else "로컬 tokenizer 없음 — 앱에서 다운로드 필요",
+            required=True,
         )
     )
     for package in ("qwen_tts", "soundfile", "torch"):

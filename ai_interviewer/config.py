@@ -60,6 +60,28 @@ def model_dir_name(model_id: str) -> str:
     return model_id.rsplit("/", 1)[-1]
 
 
+MODEL_INSTALL_MARKER = ".download_complete"
+
+
+class ModelNotInstalledError(RuntimeError):
+    def __init__(self, model_id: str, local_dir: Path):
+        super().__init__(
+            f"Model is not installed locally: {model_id} (expected at {local_dir})"
+        )
+        self.model_id = model_id
+        self.local_dir = local_dir
+
+
+def is_model_installed(model_root: Path, model_id: str) -> bool:
+    model_dir = Path(model_root) / model_dir_name(model_id)
+    if (model_dir / MODEL_INSTALL_MARKER).exists():
+        return True
+    # Manual installs predate the marker file.
+    if (model_dir / "config.json").exists() and any(model_dir.glob("*.safetensors")):
+        return True
+    return False
+
+
 @dataclass(slots=True)
 class AppConfig:
     tts_backend: str = QWEN_BACKEND
@@ -77,8 +99,8 @@ class AppConfig:
         "Speak with a steady pace, neutral confidence, clear pronunciation, and a respectful interview-room tone. "
         "Do not sound playful, theatrical, overly excited, or like a casual assistant."
     )
-    device_map: str = "cuda:0"
-    torch_dtype: str = "bfloat16"
+    device_map: str = "auto"
+    torch_dtype: str = "auto"
     use_flash_attention: bool = False
     max_new_tokens: int = 8192
     enable_windows_sapi_fallback: bool = False
@@ -105,9 +127,11 @@ class AppConfig:
 
     def model_source(self) -> str:
         local_dir = self.local_model_dir()
-        if local_dir.exists():
+        if is_model_installed(self.model_root, self.model_id):
             return str(local_dir)
-        return self.model_id
+        if os.environ.get("AI_INTERVIEW_ALLOW_HUB") == "1":
+            return self.model_id
+        raise ModelNotInstalledError(self.model_id, local_dir)
 
     def ensure_directories(self) -> None:
         self.sessions_root.mkdir(parents=True, exist_ok=True)
@@ -118,8 +142,7 @@ class AppConfig:
         return "1.7B" in self.model_id
 
     def preferred_model_id(self) -> str:
-        large_model_dir = self.model_root / model_dir_name(LARGE_MODEL_ID)
-        if large_model_dir.exists():
+        if is_model_installed(self.model_root, LARGE_MODEL_ID):
             return LARGE_MODEL_ID
         return self.model_id
 
@@ -142,6 +165,13 @@ class AppConfig:
                 setattr(config, key, Path(str(value)).expanduser())
             else:
                 setattr(config, key, value)
+
+        # Configs saved before device auto-detection pinned the old defaults;
+        # "auto" resolves back to cuda:0/bfloat16 on CUDA machines.
+        if config.device_map == "cuda:0":
+            config.device_map = "auto"
+        if config.torch_dtype == "bfloat16":
+            config.torch_dtype = "auto"
         return config
 
     def save(self, path: Path | None = None) -> None:

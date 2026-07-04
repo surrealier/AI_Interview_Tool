@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ai_interviewer.config import AppConfig, DEFAULT_MODEL_ID, LARGE_MODEL_ID, model_dir_name
+from ai_interviewer.config import AppConfig, DEFAULT_MODEL_ID, LARGE_MODEL_ID, is_model_installed
 from ai_interviewer.default_questions import ENGLISH_MODE, KOREAN_MODE
 
 
@@ -53,8 +53,8 @@ SPEAKERS: tuple[SpeakerOption, ...] = (
 
 
 def tts_model_options(config: AppConfig) -> tuple[TTSModelOption, ...]:
-    large_installed = (config.model_root / model_dir_name(LARGE_MODEL_ID)).exists()
-    default_installed = (config.model_root / model_dir_name(DEFAULT_MODEL_ID)).exists()
+    large_installed = is_model_installed(config.model_root, LARGE_MODEL_ID)
+    default_installed = is_model_installed(config.model_root, DEFAULT_MODEL_ID)
     return (
         TTSModelOption(
             model_id=DEFAULT_MODEL_ID,

@@ -18,7 +18,10 @@ def test_speaker_catalog_lists_supported_custom_voice_speakers() -> None:
 
 def test_tts_model_catalog_marks_local_install_state(tmp_path) -> None:
     config = AppConfig(model_root=tmp_path / "models", config_path=tmp_path / "config.json")
-    (config.model_root / model_dir_name(DEFAULT_MODEL_ID)).mkdir(parents=True)
+    model_dir = config.model_root / model_dir_name(DEFAULT_MODEL_ID)
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_bytes(b"fake")
 
     options = tts_model_options(config)
     by_id = {option.model_id: option for option in options}
@@ -26,3 +29,13 @@ def test_tts_model_catalog_marks_local_install_state(tmp_path) -> None:
     assert by_id[DEFAULT_MODEL_ID].installed is True
     assert by_id[LARGE_MODEL_ID].installed is False
     assert by_id[LARGE_MODEL_ID].supports_tone_control is True
+
+
+def test_tts_model_catalog_treats_empty_dir_as_not_installed(tmp_path) -> None:
+    config = AppConfig(model_root=tmp_path / "models", config_path=tmp_path / "config.json")
+    (config.model_root / model_dir_name(DEFAULT_MODEL_ID)).mkdir(parents=True)
+
+    options = tts_model_options(config)
+    by_id = {option.model_id: option for option in options}
+
+    assert by_id[DEFAULT_MODEL_ID].installed is False
