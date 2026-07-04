@@ -25,10 +25,25 @@ $ModelDir = Join-Path $ModelRoot ($ModelId.Split("/")[-1])
 hf download $TokenizerId --revision $Revision --local-dir $TokenizerDir
 hf download $ModelId --revision $Revision --local-dir $ModelDir
 
+# The app's is_model_installed() looks for this marker (same format as the
+# in-app downloader writes).
+function Write-InstallMarker([string]$Dir, [string]$RepoId) {
+    @{
+        repo_id       = $RepoId
+        revision      = $Revision
+        license       = "apache-2.0"
+        downloaded_at = (Get-Date -Format o)
+    } | ConvertTo-Json | Set-Content -Encoding UTF8 -Path (Join-Path $Dir ".download_complete")
+}
+
+Write-InstallMarker $TokenizerDir $TokenizerId
+Write-InstallMarker $ModelDir $ModelId
+
 $MetadataPath = Join-Path $ModelRoot "model_sources.txt"
 @(
     "downloaded_at=$(Get-Date -Format o)"
     "revision=$Revision"
+    "license=apache-2.0"
     "tokenizer=$TokenizerId -> $TokenizerDir"
     "model=$ModelId -> $ModelDir"
 ) | Set-Content -Encoding UTF8 -Path $MetadataPath

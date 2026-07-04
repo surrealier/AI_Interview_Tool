@@ -17,6 +17,8 @@ from ai_interviewer.config import (
     LARGE_MODEL_ID,
     QWEN_BACKEND,
     SUPPORTED_TTS_BACKENDS,
+    TOKENIZER_MODEL_ID,
+    is_model_installed,
 )
 from ai_interviewer.default_questions import (
     INTERVIEW_TYPE_HR,
@@ -30,6 +32,8 @@ from ai_interviewer.diagnostics import collect_runtime_diagnostics, diagnostics_
 from ai_interviewer.engine import InterviewEngine
 from ai_interviewer.error_dialog import show_crash_dialog
 from ai_interviewer.followup import generate_follow_up_question
+from ai_interviewer.model_download_dialog import ModelDownloadDialog
+from ai_interviewer.model_downloader import approx_download_bytes, format_bytes
 from ai_interviewer.question_parser import detect_language, parse_questions
 from ai_interviewer.stt import (
     MicrophoneRecorder,
@@ -343,7 +347,11 @@ class InterviewApp(tk.Tk):
         choices.columnconfigure(0, weight=1)
         choices.columnconfigure(1, weight=1)
         for index, option in enumerate(tts_model_options(self.config_model)):
-            installed = "Installed" if option.installed else "Not installed · can use Hub/model id"
+            if option.installed:
+                installed = "설치됨"
+            else:
+                size = approx_download_bytes(self.config_model.model_root, option.model_id)
+                installed = f"미설치 · 다운로드 필요 (~{format_bytes(size)})"
             tone = "Tone control ON" if option.supports_tone_control else "Tone control limited"
             suffix = " · Recommended" if option.recommended else ""
             self._choice_button(
@@ -355,6 +363,36 @@ class InterviewApp(tk.Tk):
                 self.model_var,
                 option.model_id,
             )
+        if not self._selected_model_installed():
+            download_row = ttk.Frame(parent, style="Surface.TFrame")
+            download_row.grid(row=2, column=0, sticky="ew", pady=(14, 0))
+            ttk.Label(
+                download_row,
+                text="선택한 모델이 설치되어 있지 않습니다. 다음 단계로 가기 전에 다운로드하세요.",
+                style="Muted.TLabel",
+            ).pack(side="left")
+            ttk.Button(
+                download_row,
+                text="지금 다운로드",
+                command=lambda: self._open_model_download(self.model_var.get()),
+            ).pack(side="right")
+
+    def _selected_model_installed(self) -> bool:
+        return is_model_installed(self.config_model.model_root, self.model_var.get()) and is_model_installed(
+            self.config_model.model_root, TOKENIZER_MODEL_ID
+        )
+
+    def _open_model_download(self, model_id: str, on_complete=None) -> None:
+        def completed() -> None:
+            self.provider = None
+            self.preload_provider = None
+            if self.setup_content is not None and self._setup_steps[self.setup_step_index] == "model":
+                self._render_setup_step(animated=False)
+            self.status_var.set("모델 다운로드가 완료되었습니다.")
+            if on_complete is not None:
+                on_complete()
+
+        ModelDownloadDialog(self, self.config_model, model_id, on_complete=completed)
 
     def _build_setup_speaker(self, parent: tk.Widget) -> None:
         section_header(parent, "면접관 voice를 선택하세요", "지원 speaker를 직접 고르는 방식입니다. native language와 설명을 함께 표시합니다.").grid(
@@ -549,6 +587,13 @@ class InterviewApp(tk.Tk):
 
     def _validate_setup_step(self) -> bool:
         step = self._setup_steps[self.setup_step_index]
+        if step == "model" and self.tts_backend_var.get() == QWEN_BACKEND and not self._selected_model_installed():
+            if messagebox.askyesno(
+                "모델 미설치",
+                "선택한 TTS 모델이 아직 설치되어 있지 않습니다.\n지금 다운로드할까요?",
+            ):
+                self._open_model_download(self.model_var.get())
+            return False
         if step == "questions":
             self._apply_setup_questions()
             questions = parse_questions(self._setup_questions_content())
@@ -916,6 +961,12 @@ class InterviewApp(tk.Tk):
         self._setting_label(media_tab, "Model folder", 0)
         ttk.Entry(media_tab, textvariable=self.model_root_var).grid(row=0, column=1, sticky="ew", padx=8)
         ttk.Button(media_tab, text="Browse", command=self._choose_model_root, style="Tool.TButton").grid(row=0, column=2)
+        ttk.Button(
+            media_tab,
+            text="모델 다운로드",
+            command=lambda: self._open_model_download(self.model_var.get()),
+            style="Tool.TButton",
+        ).grid(row=0, column=3, padx=(8, 0))
         self._setting_label(media_tab, "Video file", 1)
         ttk.Entry(media_tab, textvariable=self.video_path_var).grid(row=1, column=1, sticky="ew", padx=8, pady=(8, 0))
         ttk.Button(media_tab, text="Browse", command=self._choose_video_file, style="Tool.TButton").grid(row=1, column=2, pady=(8, 0))
@@ -1196,6 +1247,13 @@ class InterviewApp(tk.Tk):
         self.warning_var.set("Qwen3-TTS 모델 로딩 실패. Windows fallback은 명시적으로 켠 경우에만 사용됩니다.")
         if self.engine is None:
             self.status_var.set("Qwen3-TTS 모델 로딩 실패. 런타임 진단을 확인하세요.")
+            if not self._selected_model_installed():
+                if messagebox.askyesno(
+                    "Qwen3-TTS preload",
+                    f"{exc}\n\nQwen 모델이 설치되어 있지 않습니다. 지금 다운로드할까요?",
+                ):
+                    self._open_model_download(self.model_var.get())
+                return
             messagebox.showwarning("Qwen3-TTS preload", str(exc))
 
     def _render_current_question(self) -> None:
@@ -1495,6 +1553,13 @@ class InterviewApp(tk.Tk):
         self._apply_config_from_ui()
         self.runtime_report = collect_runtime_diagnostics(self.config_model)
         self.diagnostic_status_var.set(self.runtime_report.summary_ko())
+        if self.tts_backend_var.get() == QWEN_BACKEND and not self._selected_model_installed():
+            if messagebox.askyesno(
+                "런타임 진단",
+                diagnostics_text(self.runtime_report) + "\n\nQwen 모델이 설치되어 있지 않습니다. 지금 다운로드할까요?",
+            ):
+                self._open_model_download(self.model_var.get())
+            return
         messagebox.showinfo("런타임 진단", diagnostics_text(self.runtime_report))
 
     def _next_question(self) -> None:
