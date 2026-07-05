@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ai_interviewer import gui
+from ai_interviewer import gui, setup_wizard
 from ai_interviewer.config import AppConfig, WINDOWS_SAPI_BACKEND
 
 
@@ -27,10 +27,25 @@ def _tk_available() -> bool:
     return True
 
 
+def _reset_ttkbootstrap_singleton() -> None:
+    # ttkbootstrap keeps process-wide state bound to the first Tk root: the
+    # Style singleton and the theme-change Publisher subscriptions. Stale
+    # references to a destroyed root break later widget creation.
+    try:
+        import ttkbootstrap
+        from ttkbootstrap.publisher import Publisher
+
+        ttkbootstrap.Style.instance = None
+        Publisher.clear_subscribers()
+    except ImportError:
+        pass
+
+
 @pytest.fixture()
 def interview_app(monkeypatch: pytest.MonkeyPatch, tmp_path):
     if not _tk_available():
         pytest.skip("Tk display is not available.")
+    _reset_ttkbootstrap_singleton()
 
     config = AppConfig(
         tts_backend=WINDOWS_SAPI_BACKEND,
@@ -53,6 +68,7 @@ def interview_app(monkeypatch: pytest.MonkeyPatch, tmp_path):
     yield app
     if app.winfo_exists():
         app.destroy()
+    _reset_ttkbootstrap_singleton()
 
 
 def test_setup_wizard_is_first_screen(interview_app: gui.InterviewApp) -> None:
@@ -100,8 +116,8 @@ def test_setup_sound_test_uses_selected_voice(monkeypatch: pytest.MonkeyPatch, i
         def start(self):
             self.target()
 
-    monkeypatch.setattr(gui, "QwenTTSProvider", FakeProvider)
-    monkeypatch.setattr(gui.threading, "Thread", FakeThread)
+    monkeypatch.setattr(setup_wizard, "QwenTTSProvider", FakeProvider)
+    monkeypatch.setattr(setup_wizard.threading, "Thread", FakeThread)
     interview_app.interview_language_var.set("English")
     interview_app.selected_speaker_var.set("Aiden")
 

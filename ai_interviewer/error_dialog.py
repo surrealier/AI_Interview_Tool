@@ -104,9 +104,14 @@ def _show_crash_dialog(exc_type: type[BaseException], exc: BaseException, tb: Tr
     ttk.Button(buttons, text="닫기", command=window.destroy).pack(side="right")
 
     window.transient(root)
-    window.grab_set()
-    root.wait_window(window)
+    try:
+        window.grab_set()
+    except tk.TclError:
+        pass
     if owns_root:
+        # No mainloop is running (top-level excepthook); pump events until the
+        # dialog closes, then drop the temporary root.
+        root.wait_window(window)
         root.destroy()
 
 
