@@ -1,6 +1,6 @@
 # Beta Terms
 
-AI Interviewer v0.9.0-beta is a paid beta product for interview practice. It is
+AI Interviewer is a paid product currently in pre-release (release candidate) stage for interview practice. It is
 not a hiring decision system and must not be used as the sole basis for
 employment, admission, promotion, or compensation decisions.
 
@@ -30,3 +30,4 @@ process another person's voice without proper consent.
 The beta is provided as is. Surrealier does not guarantee uninterrupted use,
 particular interview outcomes, or compatibility with every Windows, GPU, driver,
 or audio device configuration.
+

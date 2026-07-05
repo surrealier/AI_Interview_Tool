@@ -1,6 +1,6 @@
 # Support
 
-For the v0.9.0-beta release, support is best-effort unless a separate paid
+For pre-release versions, support is best-effort unless a separate paid
 agreement says otherwise.
 
 ## Before Contacting Support
@@ -34,3 +34,4 @@ Expected result:
 Actual result:
 Runtime diagnostics:
 ```
+

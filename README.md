@@ -134,6 +134,6 @@ python -m pytest
 - `PRIVACY.md`: local data and network behavior
 - `TERMS.md`: beta terms and limitations
 - `SUPPORT.md`: support checklist and issue template
-- `RELEASE_NOTES.md`: v0.9.0-beta notes
+- `RELEASE_NOTES.md`: release notes
 - `MODEL_LICENSES.md`: model distribution policy
 - `THIRD_PARTY_NOTICES.md`: dependency notice
