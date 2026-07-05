@@ -1,30 +1,39 @@
 # Model Licenses
 
-AI Interviewer does not bundle model weights inside the EXE. Users or release
-operators must download models into an external `models/` folder and comply with
-the upstream model terms.
+AI Interviewer does not bundle model weights inside the EXE or the release
+package. The in-app downloader (or `scripts/download_models.ps1`) fetches the
+models below into the external `models/` folder next to the app.
 
-## Default TTS Models
+## Default TTS Models (Apache-2.0)
 
-- `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice`
-- `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`
-- `Qwen/Qwen3-TTS-Tokenizer-12Hz`
+All three repositories are published by the Qwen team under the **Apache
+License 2.0** (declared on each Hugging Face model card), which permits
+commercial use and redistribution. The app pins the following revisions
+(`ai_interviewer/model_downloader.py:MODEL_REVISIONS`):
 
-Before commercial distribution, verify the current Hugging Face model cards and
-Qwen project license terms for the exact model revision being distributed. Record
-the model revision or commit hash in the release notes.
+| Repository | Pinned revision | License |
+| --- | --- | --- |
+| `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` | `85e237c12c027371202489a0ec509ded67b5e4b5` | Apache-2.0 |
+| `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | `0c0e3051f131929182e2c023b9537f8b1c68adfe` | Apache-2.0 |
+| `Qwen/Qwen3-TTS-Tokenizer-12Hz` | `7dd38ad4e9bad454aae9cd937d0cd577604fe229` | Apache-2.0 |
 
-## STT Models
+The downloader records the repository, revision, license, and download time in
+each model folder's `.download_complete` marker and in `models/model_sources.txt`.
+When upgrading models, update `MODEL_REVISIONS`, re-verify the model card
+license, and update this table.
 
-The optional STT path uses `faster-whisper`, which downloads or loads Whisper
-model variants selected by the user. Users are responsible for using models
-whose licenses allow their intended use.
+## STT Models (MIT)
+
+The optional STT path uses `faster-whisper` (MIT), which downloads
+CTranslate2 conversions of OpenAI Whisper models (weights released under the
+MIT license) from Hugging Face (`Systran/faster-whisper-*`) on first use.
 
 ## Distribution Policy
 
 - Do not commit model weights to this repository.
-- Do not place model weights inside the PyInstaller bundle.
-- If a paid package includes model files next to the EXE, include the upstream
-  license files and model revision metadata in the package.
-- If models are downloaded by script, document the source repository and target
-  local folder.
+- Do not place model weights inside the PyInstaller bundle or the release
+  ZIP/installer; `scripts/build_release.ps1` fails if `dist\AIInterview\models`
+  contains files.
+- If a future full-offline package includes model files next to the EXE,
+  include the Apache-2.0 license text and the revision metadata above in the
+  package.

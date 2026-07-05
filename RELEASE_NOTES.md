@@ -1,5 +1,37 @@
 # Release Notes
 
+## v1.0.0-rc1 (in preparation)
+
+Quality hardening toward the first commercial release.
+
+### Added
+
+- In-app model downloader: the setup wizard, settings, and diagnostics can
+  download the Qwen3-TTS models with progress, speed/ETA, disk-space preflight,
+  cancel, and resume. Pinned upstream revisions are recorded per model folder.
+- Korean/English UI language switch (setup wizard step 1 and Media settings),
+  applied live; the default follows the Windows locale.
+- Session browser: list, open, and delete saved sessions from the workspace.
+- Global crash handling: unhandled errors are logged and shown in a dialog with
+  the log location and a copyable traceback.
+- Windows installer (Inno Setup, per-user, Start-menu entry, uninstaller that
+  offers to remove downloaded models); app icon and EXE version metadata.
+- `--smoke` flag and `scripts/smoke_test_dist.ps1` for packaged-build checks;
+  GitHub Actions CI for unit tests.
+
+### Changed
+
+- TTS device selection is automatic: CUDA when available, otherwise CPU with a
+  visible CPU-mode notice (previously a hard `cuda:0` requirement failed on
+  machines without an NVIDIA GPU).
+- The app no longer silently downloads models from Hugging Face when local
+  weights are missing; missing models are a diagnostic failure with a one-click
+  download.
+- The persisted TTS backend setting migrated to the stable id `windows-sapi`.
+- UPX compression disabled to reduce antivirus false positives.
+- Dependencies are declared and pinned via `constraints.txt`; the release ZIP
+  no longer bundles model weights.
+
 ## v0.9.0-beta
 
 AI Interviewer v0.9.0-beta is the first commercial beta candidate.

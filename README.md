@@ -3,9 +3,10 @@
 AI Interviewer is an offline-first Windows desktop app for interview practice.
 Paste or load a question list, let the app read each question aloud, record and
 transcribe answers, generate follow-up questions, and export session records to
-CSV/JSON.
+CSV/JSON. The UI supports Korean and English (switchable in-app).
 
-Current release target: `v0.9.0-beta`.
+Current release target: `v1.0.0-rc1` (version source of truth:
+`ai_interviewer/__init__.py`).
 
 ## Beta Scope
 
@@ -45,8 +46,13 @@ pythonw -m ai_interviewer
 
 ## Models
 
-Model weights are not committed and are not bundled inside the EXE. The default
-model folder is `models/` next to the project or packaged app.
+Model weights are not committed and are not bundled inside the EXE or release
+packages. The default model folder is `models/` next to the project or packaged
+app. **End users download models inside the app** (setup wizard model step or
+설정 → 미디어 → 모델 다운로드) with progress, cancel, and resume; revisions are
+pinned and recorded (see `MODEL_LICENSES.md`, Apache-2.0).
+
+For development environments the script also works:
 
 ```powershell
 .\scripts\download_models.ps1 -Size 0.6B
@@ -80,7 +86,9 @@ Windows SAPI fallback is off by default. If Qwen fails, the app shows an error
 unless the fallback checkbox is explicitly enabled.
 
 Qwen model weights are not loaded when the app opens. The selected model is
-loaded only when you run the setup sound test or start the interview.
+loaded only when you run the setup sound test or start the interview. The
+device is selected automatically: CUDA when available, otherwise CPU (slower,
+with a visible CPU-mode notice).
 
 ## Local Data
 
@@ -100,23 +108,19 @@ Settings and logs:
 Session folders may contain voice recordings, transcripts, notes, and other
 personal data. See `PRIVACY.md`.
 
-## Build EXE
+## Build Release
 
 ```powershell
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-dev.txt
-pyinstaller --noconfirm interview_app.spec
+.\scripts\build_release.ps1 -Python python   # installer + ZIP
+.\scripts\smoke_test_dist.ps1                # packaged smoke check
 ```
 
-To create the beta ZIP with customer documents copied next to the EXE:
-
-```powershell
-.\scripts\build_release.ps1 -Python python
-```
-
-The release candidate folder is `dist\AIInterview\`, and the ZIP is written
-under `releases\`. See `INSTALL.md` and `docs/release-checklist.md` before
-publishing.
+The script cleans `dist\`, generates the EXE version resource, runs
+PyInstaller, copies customer documents, compiles the Inno Setup installer
+(`AIInterview-Setup-<version>.exe`; requires Inno Setup 6, or pass
+`-SkipInstaller`), and writes a portable ZIP under `releases\`. The artifact
+never includes model weights. See `INSTALL.md` and
+`docs/release-checklist.md` before publishing.
 
 ## Tests
 

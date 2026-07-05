@@ -1,29 +1,35 @@
 # Install Guide
 
-Target release: AI Interviewer v0.9.0-beta for Windows 10/11.
+Target release: AI Interviewer for Windows 10/11.
 
-## Recommended Beta Package Layout
+## Installer (recommended)
+
+Run `AIInterview-Setup-<version>.exe`. It installs per-user (no administrator
+rights needed) into `%LOCALAPPDATA%\Programs\AIInterview`, creates a Start menu
+entry, and registers an uninstaller.
+
+On first run, the setup wizard offers to download the Qwen3-TTS model (about
+2.4 GB for 0.6B, 4.5 GB for 1.7B) with a progress bar. An internet connection
+is required once for this download; afterwards the app works fully offline.
+
+## Portable ZIP
+
+Extract `AIInterview-<version>-win64.zip` anywhere and run `AIInterview.exe`.
+The layout:
 
 ```text
 AIInterview/
   AIInterview.exe
-  README.md
-  INSTALL.md
-  PRIVACY.md
-  TERMS.md
-  SUPPORT.md
-  RELEASE_NOTES.md
-  THIRD_PARTY_NOTICES.md
-  MODEL_LICENSES.md
+  _internal/               runtime files (do not modify)
+  README.md, INSTALL.md, PRIVACY.md, TERMS.md, SUPPORT.md,
+  RELEASE_NOTES.md, THIRD_PARTY_NOTICES.md, MODEL_LICENSES.md
   assets/
-    interviewer.mp4        optional
-  models/
-    Qwen3-TTS-Tokenizer-12Hz/
-    Qwen3-TTS-12Hz-0.6B-CustomVoice/
+    interviewer.mp4        optional interviewer video
+  models/                  filled by the in-app model download
 ```
 
 Model weights and custom video files are external assets. They are not compiled
-into the EXE.
+into the EXE or included in the ZIP; the app downloads models on first setup.
 
 ## Developer Install
 
@@ -34,10 +40,16 @@ that environment instead of creating `.venv`.
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-dev.txt
-python -m pip install -r requirements-interactive.txt
-python -m pip install -r requirements-qwen.txt
+python -m pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
+python -m pip install -r requirements-interactive.txt -r requirements-qwen.txt -c constraints.txt
+```
+
+`constraints.txt` pins the known-good versions used for release builds
+(regenerate with `.\scripts\lock_deps.ps1`). For CUDA acceleration install the
+matching torch wheel first:
+
+```powershell
+python -m pip install torch --index-url https://download.pytorch.org/whl/cu124
 ```
 
 Run:
@@ -53,6 +65,10 @@ python -m ai_interviewer.release_check --strict
 ```
 
 ## Model Download
+
+End users download models inside the app (setup wizard model step, or
+설정 → 미디어 → 모델 다운로드). For development environments the script still
+works:
 
 ```powershell
 .\scripts\download_models.ps1 -Size 0.6B
@@ -79,17 +95,25 @@ dist\AIInterview\
 ```
 
 Run `AIInterview.exe`, open `런타임 진단`, and complete the manual smoke test in
-`docs/release-checklist.md` before packaging the folder as a ZIP.
+`docs/release-checklist.md` before packaging.
 
-To create the customer ZIP with documents copied next to the EXE:
+To create the installer and the customer ZIP (requires Inno Setup 6 for the
+installer; pass `-SkipInstaller` to skip it):
 
 ```powershell
 .\scripts\build_release.ps1 -Python python
+.\scripts\smoke_test_dist.ps1
 ```
 
 ## Uninstall
 
-Delete the application folder. To remove local user data, also delete:
+Installer builds: use Windows "Apps > Installed apps" or the uninstaller in the
+Start menu. The uninstaller asks whether to delete downloaded models (several
+GB) and never touches your documents or settings.
+
+Portable builds: delete the application folder.
+
+To remove local user data in both cases, also delete:
 
 ```text
 %USERPROFILE%\Documents\AIInterview\

@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      package_smoke:
+        description: "Run the packaged-EXE smoke job (installs the full multi-GB runtime)"
+        type: boolean
+        default: false
 
 jobs:
   unit:
@@ -26,3 +32,31 @@ jobs:
         run: python -m pytest -q
       - name: Version check
         run: python -m ai_interviewer.release_check --print-version
+
+  package-smoke:
+    # Manual-only: the full runtime (torch) is a multi-GB install.
+    if: github.event_name == 'workflow_dispatch' && inputs.package_smoke
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install full runtime
+        run: |
+          python -m pip install -U pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
+          python -m pip install -r requirements-interactive.txt -r requirements-qwen.txt -c constraints.txt
+      - name: Build release
+        shell: pwsh
+        run: .\scripts\build_release.ps1 -Python python -SkipInstaller
+      - name: Packaged smoke test
+        shell: pwsh
+        run: .\scripts\smoke_test_dist.ps1
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: AIInterview-dist
+          path: releases/*.zip
+          retention-days: 7

@@ -25,12 +25,18 @@ transcripts, notes, job/company references, and generated follow-up questions.
 
 ## Network Use
 
-The app does not require a cloud service for normal local use. Network activity
-can occur when the user explicitly installs or configures optional components:
+The app does not require a cloud service for normal local use. The only network
+activity happens when the user explicitly triggers it:
 
-- Hugging Face model download through `scripts/download_models.ps1`.
-- Ollama follow-up generation when an Ollama host/model is configured.
+- Model download from Hugging Face, started by the user in the setup wizard or
+  settings (or via `scripts/download_models.ps1`). Only the model files are
+  downloaded; no interview data is sent.
+- Ollama follow-up generation when an Ollama host/model is configured
+  (default host is local: `http://127.0.0.1:11434`).
 - Any optional cloud provider added by the user or a future licensed build.
+
+The app never uploads recordings, transcripts, or notes anywhere on its own,
+and contains no telemetry or crash reporting.
 
 When Ollama or another remote endpoint is configured, the original question and
 candidate answer may be sent to that endpoint to generate a follow-up question.
