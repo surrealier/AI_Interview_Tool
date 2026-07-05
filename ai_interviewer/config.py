@@ -23,8 +23,17 @@ SUPPORTED_TTS_BACKENDS = (QWEN_BACKEND, WINDOWS_SAPI_BACKEND)
 
 
 def application_base_dir() -> Path:
+    """Folder next to the EXE (frozen) or the project root: external files
+    like models/, docs, and the user-provided interviewer video live here."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[1]
+
+
+def resource_base_dir() -> Path:
+    """Folder holding bundled resources (PyInstaller 6 onedir: _internal)."""
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
     return Path(__file__).resolve().parents[1]
 
 

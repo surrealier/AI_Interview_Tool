@@ -20,6 +20,7 @@ from ai_interviewer.config import (
     SUPPORTED_TTS_BACKENDS,
     TOKENIZER_MODEL_ID,
     is_model_installed,
+    resource_base_dir,
 )
 from ai_interviewer.default_questions import (
     INTERVIEW_TYPE_HR,
@@ -85,6 +86,12 @@ class InterviewApp(SetupWizardMixin, WorkspaceMixin, tk.Tk):
         self.title("AI Interviewer")
         self.geometry("1280x860")
         self.minsize(1180, 760)
+        icon_path = resource_base_dir() / "assets" / "icon.ico"
+        if icon_path.exists():
+            try:
+                self.iconbitmap(default=str(icon_path))
+            except tk.TclError:
+                logger.warning("Could not apply the window icon: %s", icon_path)
 
         self.config_model = AppConfig.load()
         self.config_model.ensure_directories()
