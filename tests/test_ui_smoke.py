@@ -8,12 +8,13 @@ import pytest
 
 from ai_interviewer import gui, setup_wizard, tasks
 from ai_interviewer.config import AppConfig, WINDOWS_SAPI_BACKEND
+from ai_interviewer.i18n import tr
 
 
 class _RuntimeReport:
     has_failures = False
 
-    def summary_ko(self) -> str:
+    def summary(self) -> str:
         return "테스트 런타임 준비 완료"
 
 
@@ -53,6 +54,7 @@ def interview_app(monkeypatch: pytest.MonkeyPatch, tmp_path):
         sessions_root=tmp_path / "sessions",
         video_path=tmp_path / "missing.mp4",
         config_path=tmp_path / "config.json",
+        ui_language="en",
     )
     monkeypatch.setattr(gui.AppConfig, "load", classmethod(lambda cls, path=None: config))
     monkeypatch.setattr(gui, "collect_runtime_diagnostics", lambda _config: _RuntimeReport())
@@ -122,14 +124,16 @@ def test_setup_sound_test_uses_selected_voice(monkeypatch: pytest.MonkeyPatch, i
     interview_app.selected_speaker_var.set("Aiden")
 
     interview_app._run_setup_sound_test()
+    expected = tr("wizard.sound_done", backend="fake-tts", speaker="Aiden")
     deadline = time.monotonic() + 2
-    while "테스트 완료" not in interview_app.sound_test_status_var.get() and time.monotonic() < deadline:
+    while interview_app.sound_test_status_var.get() != expected and time.monotonic() < deadline:
         interview_app.update()
         time.sleep(0.02)
 
     assert calls["language"] == "English"
     assert calls["speaker"] == "Aiden"
-    assert "테스트 완료" in interview_app.sound_test_status_var.get()
+    assert interview_app.sound_test_status_var.get() == expected
+    assert interview_app.sound_test_passed is True
 
 
 def test_interview_workspace_exposes_product_workflow(interview_app: gui.InterviewApp) -> None:
@@ -161,6 +165,26 @@ def test_language_modes_keep_question_sets_separate(interview_app: gui.Interview
     assert "자기소개" in korean_text
     assert "introduce yourself" not in korean_text.lower()
     assert "한국어 mode" in interview_app.question_summary_var.get()
+
+
+def test_ui_language_switch_rebuilds_wizard(interview_app: gui.InterviewApp) -> None:
+    assert interview_app.setup_next_button.cget("text") == "Next"
+
+    interview_app._set_ui_language("ko")
+
+    assert interview_app.ui_language_var.get() == "ko"
+    assert interview_app.config_model.ui_language == "ko"
+    assert interview_app.setup_next_button.cget("text") == "다음"
+
+
+def test_ui_language_switch_in_workspace_preserves_questions(interview_app: gui.InterviewApp) -> None:
+    interview_app._show_interview_workspace()
+    interview_app._replace_question_text("Custom question one?\nCustom question two?")
+
+    interview_app._set_ui_language("ko")
+
+    assert "Custom question one?" in interview_app.question_text.get("1.0", "end")
+    assert interview_app.start_button.cget("text") == "면접 시작"
 
 
 def test_default_window_target_fits_release_viewport(interview_app: gui.InterviewApp) -> None:

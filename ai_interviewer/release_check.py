@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 
 from ai_interviewer import __version__
 from ai_interviewer.config import AppConfig, application_base_dir
 from ai_interviewer.diagnostics import diagnostics_text, collect_runtime_diagnostics
+from ai_interviewer.i18n import SUPPORTED_UI_LANGUAGES, set_language
 
 
 def display_version(version: str = __version__) -> str:
@@ -37,6 +39,10 @@ def release_notes_mention_version() -> bool | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Diagnostics contain characters outside legacy console code pages (cp949).
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(description="Run AI Interviewer release/runtime checks.")
     parser.add_argument(
         "--strict",
@@ -64,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
 
     config = AppConfig.load()
     config.ensure_directories()
+    if config.ui_language in SUPPORTED_UI_LANGUAGES:
+        set_language(config.ui_language)
     report = collect_runtime_diagnostics(config)
     print(f"AI Interviewer {__version__}")
     print(diagnostics_text(report))

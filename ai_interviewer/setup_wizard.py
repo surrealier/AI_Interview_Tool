@@ -12,6 +12,7 @@ from ai_interviewer.default_questions import (
     interview_type_options,
     question_set_for_interview_type,
 )
+from ai_interviewer.i18n import SUPPORTED_UI_LANGUAGES, tr, ui_language_label
 from ai_interviewer.model_download_dialog import ModelDownloadDialog
 from ai_interviewer.model_downloader import approx_download_bytes, format_bytes
 from ai_interviewer.question_parser import parse_questions
@@ -21,7 +22,9 @@ from ai_interviewer.tts_catalog import (
     InterviewSetupState,
     default_speaker_for_language,
     model_option_by_id,
+    native_language_label,
     speaker_by_id,
+    speaker_description,
     speaker_label,
     speaker_options,
     tts_model_options,
@@ -54,12 +57,12 @@ class SetupWizardMixin:
         rail.columnconfigure(0, weight=1)
         rail.rowconfigure(3, weight=1)
         ttk.Label(rail, text="AI Interviewer", style="HeroTitle.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(rail, text=f"beta {__version__} · Interview Studio", style="RailAccent.TLabel").grid(
+        ttk.Label(rail, text=tr("wizard.rail_version", version=__version__), style="RailAccent.TLabel").grid(
             row=1, column=0, sticky="w", pady=(4, 0)
         )
         ttk.Label(
             rail,
-            text="언어, 모델, 목소리, 질문팩을 차례대로 정하고 바로 실전 모드로 들어갑니다.",
+            text=tr("wizard.rail_tagline"),
             style="RailMuted.TLabel",
             wraplength=250,
             justify="left",
@@ -88,8 +91,8 @@ class SetupWizardMixin:
         nav = ttk.Frame(stage, style="Surface.TFrame")
         nav.grid(row=2, column=0, sticky="ew", pady=(22, 0))
         nav.columnconfigure(1, weight=1)
-        self.setup_back_button = ttk.Button(nav, text="Back", command=self._setup_back, style="Tool.TButton")
-        self.setup_next_button = ttk.Button(nav, text="Next", command=self._setup_next, style="Primary.TButton")
+        self.setup_back_button = ttk.Button(nav, text=tr("common.back"), command=self._setup_back, style="Tool.TButton")
+        self.setup_next_button = ttk.Button(nav, text=tr("common.next"), command=self._setup_next, style="Primary.TButton")
         self.setup_back_button.grid(row=0, column=0, sticky="w")
         self.setup_next_button.grid(row=0, column=2, sticky="e")
         self.bind("<Return>", lambda _event: self._setup_next())
@@ -101,7 +104,16 @@ class SetupWizardMixin:
 
     @property
     def _setup_step_labels(self) -> tuple[str, ...]:
-        return ("Language", "Model", "Speaker", "Interview", "Questions", "Sound", "Options", "Review")
+        return (
+            tr("wizard.step.language"),
+            tr("wizard.step.model"),
+            tr("wizard.step.speaker"),
+            tr("wizard.step.interview"),
+            tr("wizard.step.questions"),
+            tr("wizard.step.sound"),
+            tr("wizard.step.options"),
+            tr("wizard.step.review"),
+        )
 
     def _render_setup_step(self, animated: bool = True) -> None:
         if self.setup_content is None:
@@ -117,7 +129,7 @@ class SetupWizardMixin:
         progress.grid(row=0, column=0, sticky="ew")
         ttk.Label(
             progress,
-            text=f"STEP {self.setup_step_index + 1:02d}",
+            text=tr("wizard.step_prefix", number=f"{self.setup_step_index + 1:02d}"),
             style="Kicker.TLabel",
         ).pack(side="left")
         ttk.Label(progress, text=self._setup_step_labels[self.setup_step_index], style="Muted.TLabel").pack(side="left", padx=(10, 0))
@@ -130,7 +142,7 @@ class SetupWizardMixin:
         step = self._setup_steps[self.setup_step_index]
         getattr(self, f"_build_setup_{step}")(body)
         self.setup_back_button.configure(state="disabled" if self.setup_step_index == 0 else "normal")
-        self.setup_next_button.configure(text="Start Interview" if step == "review" else "Next")
+        self.setup_next_button.configure(text=tr("wizard.start_interview") if step == "review" else tr("common.next"))
         if animated:
             self._animate_step_in(body)
 
@@ -164,16 +176,28 @@ class SetupWizardMixin:
         self.after(80, self._setup_next)
 
     def _build_setup_language(self, parent: tk.Widget) -> None:
-        section_header(parent, "면접 언어를 선택하세요", "질문팩, TTS 언어, 추천 speaker가 함께 바뀝니다.").grid(row=0, column=0, sticky="ew")
+        section_header(parent, tr("wizard.language_title"), tr("wizard.language_sub")).grid(row=0, column=0, sticky="ew")
         choices = ttk.Frame(parent, style="Surface.TFrame")
         choices.grid(row=1, column=0, sticky="nsew", pady=(18, 0))
         choices.columnconfigure(0, weight=1)
         choices.columnconfigure(1, weight=1)
-        self._choice_button(choices, "한국어", "한국어 질문팩과 Sohee voice를 기본으로 사용합니다.", 0, 0, self.interview_language_var, "Korean")
-        self._choice_button(choices, "English", "Use English question packs with Ryan voice by default.", 0, 1, self.interview_language_var, "English")
+        self._choice_button(choices, "한국어", tr("wizard.lang_ko_desc"), 0, 0, self.interview_language_var, "Korean")
+        self._choice_button(choices, "English", tr("wizard.lang_en_desc"), 0, 1, self.interview_language_var, "English")
+
+        ui_row = ttk.Frame(parent, style="Surface.TFrame")
+        ui_row.grid(row=2, column=0, sticky="ew", pady=(22, 0))
+        ttk.Label(ui_row, text=tr("wizard.ui_language_title"), style="Section.TLabel").pack(side="left")
+        for language in SUPPORTED_UI_LANGUAGES:
+            ttk.Radiobutton(
+                ui_row,
+                text=ui_language_label(language),
+                value=language,
+                variable=self.ui_language_var,
+                command=lambda lang=language: self._set_ui_language(lang),
+            ).pack(side="left", padx=(14, 0))
 
     def _build_setup_model(self, parent: tk.Widget) -> None:
-        section_header(parent, "TTS 모델을 선택하세요", "모델은 여기서 선택만 하고, 사운드 테스트 또는 면접 시작 때 처음 로드합니다.").grid(
+        section_header(parent, tr("wizard.model_title"), tr("wizard.model_sub")).grid(
             row=0, column=0, sticky="ew"
         )
         choices = ttk.Frame(parent, style="Surface.TFrame")
@@ -182,12 +206,12 @@ class SetupWizardMixin:
         choices.columnconfigure(1, weight=1)
         for index, option in enumerate(tts_model_options(self.config_model)):
             if option.installed:
-                installed = "설치됨"
+                installed = tr("wizard.model_installed")
             else:
                 size = approx_download_bytes(self.config_model.model_root, option.model_id)
-                installed = f"미설치 · 다운로드 필요 (~{format_bytes(size)})"
-            tone = "Tone control ON" if option.supports_tone_control else "Tone control limited"
-            suffix = " · Recommended" if option.recommended else ""
+                installed = tr("wizard.model_not_installed", size=format_bytes(size))
+            tone = tr("wizard.tone_on") if option.supports_tone_control else tr("wizard.tone_limited")
+            suffix = tr("wizard.recommended_suffix") if option.recommended else ""
             self._choice_button(
                 choices,
                 f"{option.display_name}{suffix}",
@@ -202,12 +226,12 @@ class SetupWizardMixin:
             download_row.grid(row=2, column=0, sticky="ew", pady=(14, 0))
             ttk.Label(
                 download_row,
-                text="선택한 모델이 설치되어 있지 않습니다. 다음 단계로 가기 전에 다운로드하세요.",
+                text=tr("wizard.model_download_hint"),
                 style="Muted.TLabel",
             ).pack(side="left")
             ttk.Button(
                 download_row,
-                text="지금 다운로드",
+                text=tr("wizard.download_now"),
                 command=lambda: self._open_model_download(self.model_var.get()),
             ).pack(side="right")
 
@@ -222,14 +246,14 @@ class SetupWizardMixin:
             self.preload_provider = None
             if self.setup_content is not None and self._setup_steps[self.setup_step_index] == "model":
                 self._render_setup_step(animated=False)
-            self.status_var.set("모델 다운로드가 완료되었습니다.")
+            self.status_var.set(tr("wizard.model_download_done"))
             if on_complete is not None:
                 on_complete()
 
         ModelDownloadDialog(self, self.config_model, model_id, on_complete=completed)
 
     def _build_setup_speaker(self, parent: tk.Widget) -> None:
-        section_header(parent, "면접관 voice를 선택하세요", "지원 speaker를 직접 고르는 방식입니다. native language와 설명을 함께 표시합니다.").grid(
+        section_header(parent, tr("wizard.speaker_title"), tr("wizard.speaker_sub")).grid(
             row=0, column=0, sticky="ew"
         )
         choices = ttk.Frame(parent, style="Surface.TFrame")
@@ -240,11 +264,11 @@ class SetupWizardMixin:
             row, column = divmod(index, 3)
             title = speaker.display_name
             if self.interview_language_var.get() in speaker.recommended_languages:
-                title += " · Recommended"
+                title += tr("wizard.recommended_suffix")
             self._choice_button(
                 choices,
                 title,
-                f"{speaker.native_language}\n{speaker.description}",
+                f"{native_language_label(speaker)}\n{speaker_description(speaker)}",
                 row,
                 column,
                 self.selected_speaker_var,
@@ -252,16 +276,16 @@ class SetupWizardMixin:
             )
 
     def _build_setup_type(self, parent: tk.Widget) -> None:
-        section_header(parent, "어떤 면접을 연습할까요?", "선택한 유형에 맞는 기본 질문팩을 준비합니다.").grid(row=0, column=0, sticky="ew")
+        section_header(parent, tr("wizard.type_title"), tr("wizard.type_sub")).grid(row=0, column=0, sticky="ew")
         choices = ttk.Frame(parent, style="Surface.TFrame")
         choices.grid(row=1, column=0, sticky="nsew", pady=(18, 0))
         for column in range(2):
             choices.columnconfigure(column, weight=1)
         descriptions = {
-            "hr": "자기소개, 지원동기, 강점/약점 등 기본 인성 면접입니다.",
-            "star": "경험을 상황-행동-결과 중심으로 깊게 묻습니다.",
-            "role": "직무 이해도와 회사/업무 적합성을 확인합니다.",
-            "technical": "프로젝트, 설계, 테스트, 장애 대응 등 기술 역량을 봅니다.",
+            "hr": tr("wizard.type_desc_hr"),
+            "star": tr("wizard.type_desc_star"),
+            "role": tr("wizard.type_desc_role"),
+            "technical": tr("wizard.type_desc_technical"),
         }
         for index, (interview_type, label) in enumerate(interview_type_options(self.interview_language_var.get())):
             row, column = divmod(index, 2)
@@ -276,7 +300,7 @@ class SetupWizardMixin:
             )
 
     def _build_setup_questions(self, parent: tk.Widget) -> None:
-        section_header(parent, "질문 리스트가 있나요?", "없으면 선택한 유형의 기본 20문항으로 시작합니다.").grid(row=0, column=0, sticky="ew")
+        section_header(parent, tr("wizard.questions_title"), tr("wizard.questions_sub")).grid(row=0, column=0, sticky="ew")
         body = ttk.Frame(parent, style="Surface.TFrame")
         body.grid(row=1, column=0, sticky="nsew", pady=(18, 0))
         body.columnconfigure(0, weight=1)
@@ -285,20 +309,20 @@ class SetupWizardMixin:
         top.grid(row=0, column=0, sticky="ew")
         ttk.Radiobutton(
             top,
-            text="기본 질문 사용",
+            text=tr("wizard.use_default_questions"),
             value="default",
             variable=self.question_source_var,
             command=self._on_question_source_changed,
         ).pack(side="left")
         ttk.Radiobutton(
             top,
-            text="내 질문 붙여넣기",
+            text=tr("wizard.paste_questions"),
             value="custom",
             variable=self.question_source_var,
             command=self._on_question_source_changed,
         ).pack(side="left", padx=(18, 0))
         selected_set = question_set_for_interview_type(self.interview_language_var.get(), self.interview_type_var.get())
-        ttk.Label(body, text=f"Default pack: {selected_set}", style="Subtitle.TLabel").grid(row=1, column=0, sticky="w", pady=(12, 8))
+        ttk.Label(body, text=tr("wizard.default_pack", set_name=selected_set), style="Subtitle.TLabel").grid(row=1, column=0, sticky="w", pady=(12, 8))
         if self.question_source_var.get() == "custom":
             self.setup_questions_text = self._make_text_widget(body, height=12)
             self.setup_questions_text.grid(row=2, column=0, sticky="nsew")
@@ -334,7 +358,7 @@ class SetupWizardMixin:
         self._render_setup_step()
 
     def _build_setup_sound(self, parent: tk.Widget) -> None:
-        section_header(parent, "사운드 테스트를 할까요?", "이 버튼을 누르는 순간에만 Qwen 모델 로드가 시작됩니다.").grid(row=0, column=0, sticky="ew")
+        section_header(parent, tr("wizard.sound_title"), tr("wizard.sound_sub")).grid(row=0, column=0, sticky="ew")
         body = ttk.Frame(parent, style="Surface.TFrame")
         body.grid(row=1, column=0, sticky="nsew", pady=(18, 0))
         body.columnconfigure(0, weight=1)
@@ -354,40 +378,40 @@ class SetupWizardMixin:
         ttk.Label(body, textvariable=self.sound_test_status_var, style="Warning.TLabel", wraplength=720).grid(
             row=2, column=0, sticky="w", pady=(16, 0)
         )
-        ttk.Button(body, text="Run Sound Test", command=self._run_setup_sound_test, style="Primary.TButton").grid(
+        ttk.Button(body, text=tr("wizard.run_sound_test"), command=self._run_setup_sound_test, style="Primary.TButton").grid(
             row=3, column=0, sticky="w", pady=(18, 0)
         )
-        ttk.Checkbutton(body, text="면접 시작 전 사운드 테스트를 권장 알림으로 유지", variable=self.sound_test_required_var).grid(
+        ttk.Checkbutton(body, text=tr("wizard.sound_keep_reminder"), variable=self.sound_test_required_var).grid(
             row=4, column=0, sticky="w", pady=(16, 0)
         )
 
     def _build_setup_preferences(self, parent: tk.Widget) -> None:
-        section_header(parent, "진행 방식을 선택하세요", "면접 화면에서도 다시 바꿀 수 있습니다.").grid(row=0, column=0, sticky="ew")
+        section_header(parent, tr("wizard.pref_title"), tr("wizard.pref_sub")).grid(row=0, column=0, sticky="ew")
         body = ttk.Frame(parent, style="Surface.TFrame")
         body.grid(row=1, column=0, sticky="nsew", pady=(18, 0))
         body.columnconfigure(1, weight=1)
-        ttk.Checkbutton(body, text="답변 녹음/STT 사용", variable=self.enable_stt_var).grid(row=0, column=0, sticky="w")
-        ttk.Checkbutton(body, text="Qwen 실패 시 Windows 기본 음성 fallback 허용", variable=self.allow_fallback_var).grid(
+        ttk.Checkbutton(body, text=tr("wizard.pref_stt"), variable=self.enable_stt_var).grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(body, text=tr("wizard.pref_fallback"), variable=self.allow_fallback_var).grid(
             row=1, column=0, sticky="w", pady=(12, 0)
         )
-        ttk.Label(body, text="꼬리질문 provider", style="Section.TLabel").grid(row=2, column=0, sticky="w", pady=(18, 0))
+        ttk.Label(body, text=tr("wizard.pref_followup"), style="Section.TLabel").grid(row=2, column=0, sticky="w", pady=(18, 0))
         ttk.Combobox(body, textvariable=self.followup_provider_var, values=("Auto", "Ollama", "Rules"), state="readonly").grid(
             row=2, column=1, sticky="ew", padx=(10, 0), pady=(18, 0)
         )
 
     def _build_setup_review(self, parent: tk.Widget) -> None:
-        section_header(parent, "설정이 완료되었습니다", "요약을 확인하고 면접을 시작하세요.").grid(row=0, column=0, sticky="ew")
+        section_header(parent, tr("wizard.review_title"), tr("wizard.review_sub")).grid(row=0, column=0, sticky="ew")
         body = ttk.Frame(parent, padding=16, style="SubtleCard.TFrame")
         body.grid(row=1, column=0, sticky="nsew", pady=(18, 0))
         body.columnconfigure(1, weight=1)
         selected_set = question_set_for_interview_type(self.interview_language_var.get(), self.interview_type_var.get())
         rows = (
-            ("Language", self.interview_language_var.get()),
-            ("Model", model_option_by_id(self.config_model, self.model_var.get()).display_name),
-            ("Speaker", speaker_label(speaker_by_id(self.selected_speaker_var.get()))),
-            ("Interview", interview_type_label(self.interview_language_var.get(), self.interview_type_var.get())),
-            ("Questions", "Custom pasted questions" if self.question_source_var.get() == "custom" else selected_set),
-            ("Sound", self.sound_test_status_var.get()),
+            (tr("wizard.step.language"), self.interview_language_var.get()),
+            (tr("wizard.step.model"), model_option_by_id(self.config_model, self.model_var.get()).display_name),
+            (tr("wizard.step.speaker"), speaker_label(speaker_by_id(self.selected_speaker_var.get()))),
+            (tr("wizard.step.interview"), interview_type_label(self.interview_language_var.get(), self.interview_type_var.get())),
+            (tr("wizard.step.questions"), tr("wizard.custom_questions") if self.question_source_var.get() == "custom" else selected_set),
+            (tr("wizard.step.sound"), self.sound_test_status_var.get()),
             ("STT", "ON" if self.enable_stt_var.get() else "OFF"),
             ("Fallback", "ON" if self.allow_fallback_var.get() else "OFF"),
         )
@@ -423,8 +447,8 @@ class SetupWizardMixin:
         step = self._setup_steps[self.setup_step_index]
         if step == "model" and self.tts_backend_var.get() == QWEN_BACKEND and not self._selected_model_installed():
             if messagebox.askyesno(
-                "모델 미설치",
-                "선택한 TTS 모델이 아직 설치되어 있지 않습니다.\n지금 다운로드할까요?",
+                tr("wizard.model_missing_title"),
+                tr("wizard.model_missing_body"),
             ):
                 self._open_model_download(self.model_var.get())
             return False
@@ -432,7 +456,7 @@ class SetupWizardMixin:
             self._apply_setup_questions()
             questions = parse_questions(self._setup_questions_content())
             if not questions:
-                messagebox.showwarning("질문 없음", "질문을 한 개 이상 입력하세요.")
+                messagebox.showwarning(tr("wizard.no_questions_title"), tr("wizard.no_questions_body"))
                 return False
         return True
 
@@ -467,8 +491,9 @@ class SetupWizardMixin:
         self._apply_config_from_ui(save=False)
         language = self.interview_language_var.get()
         speaker = self.selected_speaker_var.get()
-        self.sound_test_status_var.set("Qwen3-TTS 모델을 로드하고 테스트 음성을 생성 중입니다...")
-        self.runtime_badge_var.set("Runtime: Sound test")
+        self.sound_test_passed = False
+        self.sound_test_status_var.set(tr("wizard.sound_testing"))
+        self.runtime_badge_var.set(tr("badge.sound_test"))
         provider = QwenTTSProvider(self.config_model, self.config_model.sessions_root / "_setup_sound_test")
         self.preload_provider = provider
 
@@ -481,19 +506,21 @@ class SetupWizardMixin:
         )
 
     def _on_setup_sound_test_done(self, result) -> None:
-        self.sound_test_status_var.set(f"테스트 완료: {result.backend}, speaker={result.speaker}")
-        self.runtime_badge_var.set("Runtime: Ready")
+        self.sound_test_passed = True
+        self.sound_test_status_var.set(tr("wizard.sound_done", backend=result.backend, speaker=result.speaker))
+        self.runtime_badge_var.set(tr("badge.ready"))
 
     def _on_setup_sound_test_error(self, exc: Exception) -> None:
-        self.sound_test_status_var.set(f"테스트 실패: {exc}")
-        self.runtime_badge_var.set("Runtime: Warning")
-        messagebox.showerror("사운드 테스트 실패", str(exc))
+        self.sound_test_passed = False
+        self.sound_test_status_var.set(tr("wizard.sound_failed", error=exc))
+        self.runtime_badge_var.set(tr("badge.warning"))
+        messagebox.showerror(tr("wizard.sound_failed_title"), str(exc))
 
     def _begin_interview_from_setup(self) -> None:
         self._apply_setup_questions()
         self._apply_config_from_ui(save=True)
-        if self.sound_test_required_var.get() and not self.sound_test_status_var.get().startswith("테스트 완료"):
-            if not messagebox.askyesno("사운드 테스트 미완료", "사운드 테스트를 아직 완료하지 않았습니다. 그래도 면접을 시작할까요?"):
+        if self.sound_test_required_var.get() and not self.sound_test_passed:
+            if not messagebox.askyesno(tr("wizard.sound_not_done_title"), tr("wizard.sound_not_done_ask")):
                 return
         self.config_model.setup_completed = True
         self.config_model.save()

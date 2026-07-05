@@ -4,6 +4,7 @@ import math
 import tkinter as tk
 from tkinter import ttk
 
+from ai_interviewer.i18n import tr
 from ai_interviewer.ui_theme import LIGHT_THEME, UiTheme
 
 
@@ -161,7 +162,7 @@ def selectable_tile(
 
     accent = tk.Frame(tile, width=4, bg=theme.accent if selected else theme.border)
     accent.grid(row=0, column=0, rowspan=2, sticky="nsw", padx=(0, 12))
-    ttk.Label(tile, text=("Selected" if selected else "Choose"), style=body_style).grid(row=0, column=1, sticky="w")
+    ttk.Label(tile, text=(tr("common.selected") if selected else tr("common.choose")), style=body_style).grid(row=0, column=1, sticky="w")
     ttk.Label(tile, text=title, style=title_style, wraplength=280, justify="left").grid(row=1, column=1, sticky="ew", pady=(2, 0))
     ttk.Label(tile, text=description, style=body_style, wraplength=280, justify="left").grid(row=2, column=1, sticky="ew", pady=(8, 0))
 

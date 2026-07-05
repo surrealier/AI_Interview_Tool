@@ -33,6 +33,13 @@ from ai_interviewer.diagnostics import collect_runtime_diagnostics, diagnostics_
 from ai_interviewer.engine import InterviewEngine
 from ai_interviewer.error_dialog import show_crash_dialog
 from ai_interviewer.followup import generate_follow_up_question
+from ai_interviewer.i18n import (
+    SUPPORTED_UI_LANGUAGES,
+    get_language,
+    resolve_system_ui_language,
+    set_language,
+    tr,
+)
 from ai_interviewer.model_download_dialog import ModelDownloadDialog
 from ai_interviewer.model_downloader import approx_download_bytes, format_bytes
 from ai_interviewer.question_parser import detect_language, parse_questions
@@ -83,6 +90,9 @@ class InterviewApp(SetupWizardMixin, WorkspaceMixin, tk.Tk):
         self.config_model.ensure_directories()
         if self.config_model.model_id not in {DEFAULT_MODEL_ID, LARGE_MODEL_ID}:
             self.config_model.model_id = DEFAULT_MODEL_ID
+        if self.config_model.ui_language not in SUPPORTED_UI_LANGUAGES:
+            self.config_model.ui_language = resolve_system_ui_language()
+        set_language(self.config_model.ui_language)
         self.engine: InterviewEngine | None = None
         self.provider: QwenTTSProvider | None = None
         self.preload_provider: QwenTTSProvider | None = None
@@ -100,6 +110,7 @@ class InterviewApp(SetupWizardMixin, WorkspaceMixin, tk.Tk):
         self.workspace_built = False
         self.setup_state: InterviewSetupState | None = None
         self.setup_custom_questions = ""
+        self.sound_test_passed = False
 
         self._build_variables()
         self._build_ui()
@@ -151,18 +162,19 @@ class InterviewApp(SetupWizardMixin, WorkspaceMixin, tk.Tk):
         self.english_speaker_var = tk.StringVar(value=self.config_model.english_speaker or "Ryan")
         self.interview_type_var = tk.StringVar(value=self.config_model.interview_type or INTERVIEW_TYPE_HR)
         self.question_source_var = tk.StringVar(value="default")
-        self.sound_test_status_var = tk.StringVar(value="사운드 테스트 전")
+        self.ui_language_var = tk.StringVar(value=self.config_model.ui_language)
+        self.sound_test_status_var = tk.StringVar(value=tr("app.sound_test_not_run"))
         self.enable_stt_var = tk.BooleanVar(value=self.config_model.enable_stt)
         self.sound_test_required_var = tk.BooleanVar(value=self.config_model.sound_test_required)
-        self.status_var = tk.StringVar(value="질문을 입력하거나 파일을 불러오세요.")
-        self.diagnostic_status_var = tk.StringVar(value="런타임 진단 대기")
-        self.runtime_badge_var = tk.StringVar(value="Runtime: Checking")
-        self.question_summary_var = tk.StringVar(value="20 questions loaded")
-        self.warning_var = tk.StringVar(value="Qwen3-TTS/STT 런타임을 백그라운드에서 점검합니다.")
+        self.status_var = tk.StringVar(value=tr("app.status_initial"))
+        self.diagnostic_status_var = tk.StringVar(value=tr("app.diag_waiting"))
+        self.runtime_badge_var = tk.StringVar(value=tr("badge.checking"))
+        self.question_summary_var = tk.StringVar(value="")
+        self.warning_var = tk.StringVar(value=tr("app.warning_initial"))
         self.progress_var = tk.StringVar(value="0 / 0")
         self.answer_timer_var = tk.StringVar(value="00:00")
         self.total_timer_var = tk.StringVar(value="00:00")
-        self.current_question_var = tk.StringVar(value="세션이 시작되지 않았습니다.")
+        self.current_question_var = tk.StringVar(value=tr("app.no_session"))
 
     def _build_ui(self) -> None:
         self._configure_styles()
@@ -190,14 +202,39 @@ class InterviewApp(SetupWizardMixin, WorkspaceMixin, tk.Tk):
 
     def _on_runtime_diagnostics(self, report) -> None:
         self.runtime_report = report
-        self.diagnostic_status_var.set(report.summary_ko())
+        self.diagnostic_status_var.set(report.summary())
         if report.has_failures:
-            self.runtime_badge_var.set("Runtime: Warning")
-            self.warning_var.set("필수 런타임 문제가 있습니다. Diagnostics에서 원인을 확인하세요.")
-            self.status_var.set("필수 런타임 문제가 있습니다. 런타임 진단을 확인하세요.")
+            self.runtime_badge_var.set(tr("badge.warning"))
+            self.warning_var.set(tr("app.runtime_issues_warning"))
+            self.status_var.set(tr("app.runtime_issues_status"))
         else:
-            self.runtime_badge_var.set("Runtime: Ready")
-            self.warning_var.set("Qwen3-TTS/STT/영상 런타임 사전 점검이 통과했습니다.")
+            self.runtime_badge_var.set(tr("badge.ready"))
+            self.warning_var.set(tr("app.runtime_ok"))
+
+    def _set_ui_language(self, language: str) -> None:
+        if language not in SUPPORTED_UI_LANGUAGES or language == get_language():
+            return
+        set_language(language)
+        self.ui_language_var.set(language)
+        self.config_model.ui_language = language
+        self.config_model.save()
+        self._rebuild_current_view()
+
+    def _rebuild_current_view(self) -> None:
+        """Rebuild the visible screen so tr() strings pick up the new language."""
+        if not self.workspace_built:
+            self._show_setup_wizard()
+            return
+        if self.session_state in {SessionState.IDLE, SessionState.READY}:
+            questions = self.question_text.get("1.0", "end").strip() if hasattr(self, "question_text") else ""
+            self._show_interview_workspace()
+            if questions:
+                self._replace_question_text(questions)
+            if self.engine is not None:
+                self._render_current_question()
+        else:
+            # Mid-session (speaking/recording): applied at the next rebuild.
+            self.status_var.set(tr("app.language_applied_later"))
 
     def _apply_config_from_ui(self, save: bool = True) -> None:
         self.config_model.interview_language = self.interview_language_var.get()
@@ -227,6 +264,7 @@ class InterviewApp(SetupWizardMixin, WorkspaceMixin, tk.Tk):
         self.config_model.ollama_host = self.ollama_host_var.get().strip() or "http://127.0.0.1:11434"
         self.config_model.enable_windows_sapi_fallback = bool(self.allow_fallback_var.get())
         self.config_model.ui_theme = self.ui_theme.name
+        self.config_model.ui_language = self.ui_language_var.get() or self.config_model.ui_language
         self.config_model.ensure_directories()
         if hasattr(self, "video_player"):
             self.video_player.set_video_path(self.config_model.video_path)
@@ -242,9 +280,9 @@ class InterviewApp(SetupWizardMixin, WorkspaceMixin, tk.Tk):
 
         self.preload_running = True
         self._set_state(SessionState.PRELOADING)
-        self.runtime_badge_var.set("Runtime: Preloading")
-        self.warning_var.set("첫 실행은 모델 로딩 때문에 시간이 걸릴 수 있습니다.")
-        self.status_var.set("Qwen3-TTS 모델을 미리 로딩 중입니다...")
+        self.runtime_badge_var.set(tr("badge.preloading"))
+        self.warning_var.set(tr("app.preload_first_run"))
+        self.status_var.set(tr("app.preloading"))
         cache_dir = self.config_model.sessions_root / "_preload"
         provider = QwenTTSProvider(self.config_model, cache_dir)
         self.preload_provider = provider
@@ -261,32 +299,32 @@ class InterviewApp(SetupWizardMixin, WorkspaceMixin, tk.Tk):
         self.preload_running = False
         self._set_state(SessionState.READY)
         cpu_mode = self.preload_provider is not None and self.preload_provider.is_cpu_runtime
-        self.runtime_badge_var.set("Runtime: Ready (CPU)" if cpu_mode else "Runtime: Ready")
+        self.runtime_badge_var.set(tr("badge.ready_cpu") if cpu_mode else tr("badge.ready"))
         if self.engine is None:
             if self.config_model.supports_style_instruction():
-                self.status_var.set("Qwen3-TTS 모델 준비 완료. 면접관 말투 지시가 적용됩니다.")
-                self.warning_var.set("Qwen3-TTS 1.7B 말투 지시가 적용되는 상태입니다.")
+                self.status_var.set(tr("app.preload_done_17_status"))
+                self.warning_var.set(tr("app.preload_done_17_warning"))
             else:
-                self.status_var.set("Qwen3-TTS 0.6B 준비 완료. 말투 지시는 1.7B 모델에서 적용됩니다.")
-                self.warning_var.set("0.6B 모델은 말투 지시 적용이 제한됩니다. 1.7B 모델을 권장합니다.")
+                self.status_var.set(tr("app.preload_done_06_status"))
+                self.warning_var.set(tr("app.preload_done_06_warning"))
             if cpu_mode:
-                self.warning_var.set("CPU 모드로 실행 중입니다. 음성 생성이 느릴 수 있습니다.")
+                self.warning_var.set(tr("app.cpu_mode"))
 
     def _on_preload_error(self, exc: Exception) -> None:
         self.preload_running = False
         self._set_state(SessionState.ERROR)
-        self.runtime_badge_var.set("Runtime: Error")
-        self.warning_var.set("Qwen3-TTS 모델 로딩 실패. Windows fallback은 명시적으로 켠 경우에만 사용됩니다.")
+        self.runtime_badge_var.set(tr("badge.error"))
+        self.warning_var.set(tr("app.preload_failed_warning"))
         if self.engine is None:
-            self.status_var.set("Qwen3-TTS 모델 로딩 실패. 런타임 진단을 확인하세요.")
+            self.status_var.set(tr("app.preload_failed_status"))
             if not self._selected_model_installed():
                 if messagebox.askyesno(
-                    "Qwen3-TTS preload",
-                    f"{exc}\n\nQwen 모델이 설치되어 있지 않습니다. 지금 다운로드할까요?",
+                    tr("app.preload_title"),
+                    tr("app.model_missing_ask", error=exc),
                 ):
                     self._open_model_download(self.model_var.get())
                 return
-            messagebox.showwarning("Qwen3-TTS preload", str(exc))
+            messagebox.showwarning(tr("app.preload_title"), str(exc))
 
     def _update_timers(self) -> None:
         if self.engine is not None:

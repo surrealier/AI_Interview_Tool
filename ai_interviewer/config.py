@@ -13,8 +13,10 @@ APP_NAME = "AIInterview"
 DEFAULT_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
 LARGE_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 TOKENIZER_MODEL_ID = "Qwen/Qwen3-TTS-Tokenizer-12Hz"
-WINDOWS_SAPI_BACKEND = "Windows 기본 음성"
+WINDOWS_SAPI_BACKEND = "windows-sapi"
 QWEN_BACKEND = "Qwen3-TTS"
+# config.json values written before the backend became a stable id.
+LEGACY_TTS_BACKEND_VALUES = {"Windows 기본 음성": WINDOWS_SAPI_BACKEND}
 
 SUPPORTED_MODEL_IDS = (DEFAULT_MODEL_ID, LARGE_MODEL_ID)
 SUPPORTED_TTS_BACKENDS = (QWEN_BACKEND, WINDOWS_SAPI_BACKEND)
@@ -112,6 +114,7 @@ class AppConfig:
     ollama_model: str = ""
     ollama_host: str = "http://127.0.0.1:11434"
     ui_theme: str = "light"
+    ui_language: str = ""
     setup_completed: bool = False
     interview_type: str = "hr"
     selected_speaker: str = "Sohee"
@@ -172,6 +175,7 @@ class AppConfig:
             config.device_map = "auto"
         if config.torch_dtype == "bfloat16":
             config.torch_dtype = "auto"
+        config.tts_backend = LEGACY_TTS_BACKEND_VALUES.get(config.tts_backend, config.tts_backend)
         return config
 
     def save(self, path: Path | None = None) -> None:

@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 import os
 from dataclasses import dataclass
-from pathlib import Path
 
 from ai_interviewer.config import (
     AppConfig,
@@ -13,6 +12,7 @@ from ai_interviewer.config import (
     default_log_path,
     is_model_installed,
 )
+from ai_interviewer.i18n import tr
 
 
 STATUS_OK = "OK"
@@ -40,12 +40,12 @@ class RuntimeDiagnosticReport:
     def has_warnings(self) -> bool:
         return any(item.status in {STATUS_WARN, STATUS_FAIL} for item in self.items)
 
-    def summary_ko(self) -> str:
+    def summary(self) -> str:
         if self.has_failures:
-            return "런타임 상태: 실패"
+            return tr("diag.summary_fail")
         if self.has_warnings:
-            return "런타임 상태: 경고"
-        return "런타임 상태: 준비됨"
+            return tr("diag.summary_warn")
+        return tr("diag.summary_ready")
 
     def as_lines(self) -> list[str]:
         return [f"[{item.status}] {item.name}: {item.detail}" for item in self.items]
@@ -64,9 +64,9 @@ def collect_runtime_diagnostics(config: AppConfig) -> RuntimeDiagnosticReport:
 def _storage_checks(config: AppConfig) -> list[DiagnosticItem]:
     items: list[DiagnosticItem] = []
     for name, path in (
-        ("세션 저장 폴더", config.sessions_root),
-        ("모델 폴더", config.model_root),
-        ("설정 폴더", config.config_path.parent),
+        (tr("diag.sessions_dir"), config.sessions_root),
+        (tr("diag.model_dir"), config.model_root),
+        (tr("diag.config_dir"), config.config_path.parent),
     ):
         try:
             path.mkdir(parents=True, exist_ok=True)
@@ -76,18 +76,25 @@ def _storage_checks(config: AppConfig) -> list[DiagnosticItem]:
             items.append(DiagnosticItem(name, STATUS_OK, str(path), required=True))
         except OSError as exc:
             items.append(DiagnosticItem(name, STATUS_FAIL, f"{path} ({exc})", required=True))
-    items.append(DiagnosticItem("설정 파일", STATUS_OK, str(config.config_path), required=False))
-    items.append(DiagnosticItem("로그 파일", STATUS_OK, str(default_log_path()), required=False))
+    items.append(DiagnosticItem(tr("diag.config_file"), STATUS_OK, str(config.config_path), required=False))
+    items.append(DiagnosticItem(tr("diag.log_file"), STATUS_OK, str(default_log_path()), required=False))
     return items
 
 
 def _tts_checks(config: AppConfig) -> list[DiagnosticItem]:
     items: list[DiagnosticItem] = [
-        DiagnosticItem("선택된 TTS 엔진", STATUS_OK, config.tts_backend, required=True),
+        DiagnosticItem(tr("diag.tts_engine"), STATUS_OK, tr(f"backend.{config.tts_backend}"), required=True),
     ]
 
     if config.tts_backend == WINDOWS_SAPI_BACKEND:
-        items.append(DiagnosticItem("Windows SAPI", STATUS_OK if os.name == "nt" else STATUS_FAIL, "Windows 전용", required=True))
+        items.append(
+            DiagnosticItem(
+                "Windows SAPI",
+                STATUS_OK if os.name == "nt" else STATUS_FAIL,
+                tr("diag.windows_only"),
+                required=True,
+            )
+        )
         return items
 
     model_dir = config.local_model_dir()
@@ -96,17 +103,17 @@ def _tts_checks(config: AppConfig) -> list[DiagnosticItem]:
     tokenizer_installed = is_model_installed(config.model_root, TOKENIZER_MODEL_ID)
     items.append(
         DiagnosticItem(
-            "Qwen 모델",
+            tr("diag.qwen_model"),
             STATUS_OK if model_installed else STATUS_FAIL,
-            str(model_dir) if model_installed else f"로컬 모델 없음 — 앱에서 다운로드 필요: {config.model_id}",
+            str(model_dir) if model_installed else tr("diag.model_missing", model_id=config.model_id),
             required=True,
         )
     )
     items.append(
         DiagnosticItem(
-            "Qwen tokenizer",
+            tr("diag.qwen_tokenizer"),
             STATUS_OK if tokenizer_installed else STATUS_FAIL,
-            str(tokenizer_dir) if tokenizer_installed else "로컬 tokenizer 없음 — 앱에서 다운로드 필요",
+            str(tokenizer_dir) if tokenizer_installed else tr("diag.tokenizer_missing"),
             required=True,
         )
     )
@@ -115,7 +122,7 @@ def _tts_checks(config: AppConfig) -> list[DiagnosticItem]:
             DiagnosticItem(
                 package,
                 STATUS_OK if importlib.util.find_spec(package) else STATUS_FAIL,
-                "installed" if importlib.util.find_spec(package) else "missing",
+                tr("diag.pkg_installed") if importlib.util.find_spec(package) else tr("diag.pkg_missing"),
                 required=config.tts_backend == QWEN_BACKEND,
             )
         )
@@ -126,13 +133,13 @@ def _tts_checks(config: AppConfig) -> list[DiagnosticItem]:
             import torch
 
             cuda_ok = torch.cuda.is_available()
-            detail = torch.cuda.get_device_name(0) if cuda_ok else "CUDA 사용 불가"
+            detail = torch.cuda.get_device_name(0) if cuda_ok else tr("diag.cuda_unavailable")
             items.append(DiagnosticItem("CUDA", STATUS_OK if cuda_ok else STATUS_WARN, detail, required=False))
         except Exception as exc:
             items.append(DiagnosticItem("CUDA", STATUS_WARN, str(exc), required=False))
 
     fallback_status = STATUS_WARN if config.enable_windows_sapi_fallback else STATUS_OK
-    fallback_detail = "Qwen 실패 시 Windows 음성 사용" if config.enable_windows_sapi_fallback else "fallback 꺼짐"
+    fallback_detail = tr("diag.fallback_on") if config.enable_windows_sapi_fallback else tr("diag.fallback_off")
     items.append(DiagnosticItem("Windows fallback", fallback_status, fallback_detail, required=False))
     return items
 
@@ -142,9 +149,9 @@ def _stt_checks(config: AppConfig) -> list[DiagnosticItem]:
     for package in ("sounddevice", "soundfile", "numpy", "faster_whisper"):
         items.append(
             DiagnosticItem(
-                f"STT dependency: {package}",
+                tr("diag.stt_dep", package=package),
                 STATUS_OK if importlib.util.find_spec(package) else STATUS_WARN,
-                "installed" if importlib.util.find_spec(package) else "missing; STT 사용 시 requirements-interactive.txt 필요",
+                tr("diag.pkg_installed") if importlib.util.find_spec(package) else tr("diag.pkg_missing_stt"),
                 required=False,
             )
         )
@@ -154,24 +161,24 @@ def _stt_checks(config: AppConfig) -> list[DiagnosticItem]:
             import sounddevice as sd
 
             device = sd.query_devices(kind="input")
-            items.append(DiagnosticItem("마이크 입력", STATUS_OK, str(device.get("name", "default")), required=False))
+            items.append(DiagnosticItem(tr("diag.mic_input"), STATUS_OK, str(device.get("name", "default")), required=False))
         except Exception as exc:
-            items.append(DiagnosticItem("마이크 입력", STATUS_WARN, str(exc), required=False))
+            items.append(DiagnosticItem(tr("diag.mic_input"), STATUS_WARN, str(exc), required=False))
     return items
 
 
 def _video_checks(config: AppConfig) -> list[DiagnosticItem]:
     items: list[DiagnosticItem] = []
     if config.video_path.exists():
-        items.append(DiagnosticItem("면접관 영상 파일", STATUS_OK, str(config.video_path), required=False))
+        items.append(DiagnosticItem(tr("diag.video_file"), STATUS_OK, str(config.video_path), required=False))
     else:
-        items.append(DiagnosticItem("면접관 영상 파일", STATUS_WARN, "파일 없음; 내장 애니메이션 사용", required=False))
+        items.append(DiagnosticItem(tr("diag.video_file"), STATUS_WARN, tr("diag.video_missing"), required=False))
     for package in ("cv2", "PIL"):
         items.append(
             DiagnosticItem(
-                f"영상 dependency: {package}",
+                tr("diag.video_dep", package=package),
                 STATUS_OK if importlib.util.find_spec(package) else STATUS_WARN,
-                "installed" if importlib.util.find_spec(package) else "missing; 영상 파일 재생 제한",
+                tr("diag.pkg_installed") if importlib.util.find_spec(package) else tr("diag.pkg_missing_video"),
                 required=False,
             )
         )
@@ -181,15 +188,15 @@ def _video_checks(config: AppConfig) -> list[DiagnosticItem]:
 def _followup_checks(config: AppConfig) -> list[DiagnosticItem]:
     provider = config.followup_provider
     if provider == "Rules":
-        return [DiagnosticItem("꼬리질문 provider", STATUS_OK, "내장 규칙 기반", required=False)]
+        return [DiagnosticItem(tr("diag.followup_provider"), STATUS_OK, tr("diag.followup_rules"), required=False)]
 
     model = config.ollama_model or os.environ.get("AI_INTERVIEW_OLLAMA_MODEL", "").strip()
     if provider == "Ollama" and not model:
-        return [DiagnosticItem("꼬리질문 provider", STATUS_WARN, "Ollama 모델 미설정; 규칙 기반 fallback", required=False)]
+        return [DiagnosticItem(tr("diag.followup_provider"), STATUS_WARN, tr("diag.followup_no_model"), required=False)]
     if model:
-        return [DiagnosticItem("꼬리질문 provider", STATUS_OK, f"Ollama: {model}", required=False)]
-    return [DiagnosticItem("꼬리질문 provider", STATUS_OK, "Auto; 모델 없으면 규칙 기반", required=False)]
+        return [DiagnosticItem(tr("diag.followup_provider"), STATUS_OK, f"Ollama: {model}", required=False)]
+    return [DiagnosticItem(tr("diag.followup_provider"), STATUS_OK, tr("diag.followup_auto"), required=False)]
 
 
 def diagnostics_text(report: RuntimeDiagnosticReport) -> str:
-    return "\n".join([report.summary_ko(), "", *report.as_lines()])
+    return "\n".join([report.summary(), "", *report.as_lines()])

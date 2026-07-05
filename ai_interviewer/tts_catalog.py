@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from ai_interviewer.config import AppConfig, DEFAULT_MODEL_ID, LARGE_MODEL_ID, is_model_installed
 from ai_interviewer.default_questions import ENGLISH_MODE, KOREAN_MODE
+from ai_interviewer.i18n import tr
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +60,7 @@ def tts_model_options(config: AppConfig) -> tuple[TTSModelOption, ...]:
         TTSModelOption(
             model_id=DEFAULT_MODEL_ID,
             display_name="0.6B CustomVoice",
-            description="Fastest Qwen3-TTS option. Tone instruction support is limited.",
+            description=tr("catalog.model_06_desc"),
             installed=default_installed,
             supports_tone_control=False,
             recommended=not large_installed,
@@ -67,7 +68,7 @@ def tts_model_options(config: AppConfig) -> tuple[TTSModelOption, ...]:
         TTSModelOption(
             model_id=LARGE_MODEL_ID,
             display_name="1.7B CustomVoice",
-            description="Recommended for calmer interviewer tone and better style control.",
+            description=tr("catalog.model_17_desc"),
             installed=large_installed,
             supports_tone_control=True,
             recommended=True,
@@ -108,5 +109,17 @@ def default_speaker_for_language(language: str) -> SpeakerOption:
     return next(speaker for speaker in SPEAKERS if speaker.speaker_id == "Sohee")
 
 
+def speaker_description(speaker: SpeakerOption) -> str:
+    return tr(f"catalog.speaker.{speaker.speaker_id}")
+
+
+def native_language_label(speaker: SpeakerOption) -> str:
+    return tr(f"lang.native.{speaker.native_language}")
+
+
+def backend_display_name(backend: str) -> str:
+    return tr(f"backend.{backend}")
+
+
 def speaker_label(speaker: SpeakerOption) -> str:
-    return f"{speaker.display_name} · {speaker.native_language} · {speaker.description}"
+    return f"{speaker.display_name} · {native_language_label(speaker)} · {speaker_description(speaker)}"
