@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -16,6 +15,7 @@ from ai_interviewer.default_questions import (
 from ai_interviewer.model_download_dialog import ModelDownloadDialog
 from ai_interviewer.model_downloader import approx_download_bytes, format_bytes
 from ai_interviewer.question_parser import parse_questions
+from ai_interviewer.tasks import run_bg
 from ai_interviewer.tts.qwen_provider import QwenTTSProvider
 from ai_interviewer.tts_catalog import (
     InterviewSetupState,
@@ -472,15 +472,13 @@ class SetupWizardMixin:
         provider = QwenTTSProvider(self.config_model, self.config_model.sessions_root / "_setup_sound_test")
         self.preload_provider = provider
 
-        def worker() -> None:
-            try:
-                result = provider.sound_test(language, speaker)
-            except Exception as exc:
-                self.after(0, lambda: self._on_setup_sound_test_error(exc))
-                return
-            self.after(0, lambda: self._on_setup_sound_test_done(result))
-
-        threading.Thread(target=worker, daemon=True).start()
+        run_bg(
+            self,
+            lambda: provider.sound_test(language, speaker),
+            on_done=self._on_setup_sound_test_done,
+            on_error=self._on_setup_sound_test_error,
+            name="setup-sound-test",
+        )
 
     def _on_setup_sound_test_done(self, result) -> None:
         self.sound_test_status_var.set(f"테스트 완료: {result.backend}, speaker={result.speaker}")

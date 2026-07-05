@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import logging
 import os
-import threading
 import time
 import tkinter as tk
 from pathlib import Path
@@ -44,6 +43,7 @@ from ai_interviewer.stt import (
     input_device_id_from_label,
     list_input_devices,
 )
+from ai_interviewer.tasks import run_bg
 from ai_interviewer.tts.qwen_provider import QwenTTSProvider
 from ai_interviewer.tts_catalog import (
     InterviewSetupState,
@@ -181,12 +181,12 @@ class InterviewApp(SetupWizardMixin, WorkspaceMixin, tk.Tk):
 
     def _run_startup_diagnostics(self) -> None:
         self._apply_config_from_ui(save=False)
-
-        def worker() -> None:
-            report = collect_runtime_diagnostics(self.config_model)
-            self.after(0, lambda: self._on_runtime_diagnostics(report))
-
-        threading.Thread(target=worker, daemon=True).start()
+        run_bg(
+            self,
+            lambda: collect_runtime_diagnostics(self.config_model),
+            on_done=self._on_runtime_diagnostics,
+            name="startup-diagnostics",
+        )
 
     def _on_runtime_diagnostics(self, report) -> None:
         self.runtime_report = report
@@ -249,15 +249,13 @@ class InterviewApp(SetupWizardMixin, WorkspaceMixin, tk.Tk):
         provider = QwenTTSProvider(self.config_model, cache_dir)
         self.preload_provider = provider
 
-        def worker() -> None:
-            try:
-                provider.preload()
-            except Exception as exc:
-                self.after(0, lambda: self._on_preload_error(exc))
-                return
-            self.after(0, self._on_preload_done)
-
-        threading.Thread(target=worker, daemon=True).start()
+        run_bg(
+            self,
+            provider.preload,
+            on_done=lambda _result: self._on_preload_done(),
+            on_error=self._on_preload_error,
+            name="tts-preload",
+        )
 
     def _on_preload_done(self) -> None:
         self.preload_running = False

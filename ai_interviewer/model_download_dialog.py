@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import logging
-import threading
 import time
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable
 
 from ai_interviewer.config import AppConfig
+from ai_interviewer.tasks import run_bg
 from ai_interviewer.model_downloader import (
     DownloadPlan,
     DownloadProgress,
@@ -83,15 +83,13 @@ class ModelDownloadDialog(tk.Toplevel):
         self.progress_detail_var.set("")
         self.progress_bar.configure(value=0)
 
-        def worker() -> None:
-            try:
-                plan = plan_download(self.config_model.model_root, self.model_id)
-            except Exception as exc:
-                self._ui(lambda: self._show_error(exc))
-                return
-            self._ui(lambda: self._on_plan_ready(plan))
-
-        threading.Thread(target=worker, daemon=True, name="model-download-plan").start()
+        run_bg(
+            self,
+            lambda: plan_download(self.config_model.model_root, self.model_id),
+            on_done=self._on_plan_ready,
+            on_error=self._show_error,
+            name="model-download-plan",
+        )
 
     def _on_plan_ready(self, plan: DownloadPlan) -> None:
         self.plan = plan

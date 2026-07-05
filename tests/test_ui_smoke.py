@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ai_interviewer import gui, setup_wizard
+from ai_interviewer import gui, setup_wizard, tasks
 from ai_interviewer.config import AppConfig, WINDOWS_SAPI_BACKEND
 
 
@@ -110,14 +110,14 @@ def test_setup_sound_test_uses_selected_voice(monkeypatch: pytest.MonkeyPatch, i
             return SimpleNamespace(backend="fake-tts", speaker=speaker)
 
     class FakeThread:
-        def __init__(self, target, daemon=True):
+        def __init__(self, target, daemon=True, name=None):
             self.target = target
 
         def start(self):
             self.target()
 
     monkeypatch.setattr(setup_wizard, "QwenTTSProvider", FakeProvider)
-    monkeypatch.setattr(setup_wizard.threading, "Thread", FakeThread)
+    monkeypatch.setattr(tasks.threading, "Thread", FakeThread)
     interview_app.interview_language_var.set("English")
     interview_app.selected_speaker_var.set("Aiden")
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import os
-import threading
 import time
 import tkinter as tk
 from pathlib import Path
@@ -28,6 +27,7 @@ from ai_interviewer.engine import InterviewEngine
 from ai_interviewer.followup import generate_follow_up_question
 from ai_interviewer.question_parser import detect_language, parse_questions
 from ai_interviewer.stt import STTError, input_device_id_from_label, list_input_devices
+from ai_interviewer.tasks import run_bg
 from ai_interviewer.tts.qwen_provider import QwenTTSProvider
 from ai_interviewer.tts_catalog import (
     default_speaker_for_language,
@@ -604,15 +604,13 @@ class WorkspaceMixin:
         else:
             self.status_var.set("Windows 기본 음성으로 재생 중...")
 
-        def worker() -> None:
-            try:
-                result = self.engine.speak_current(provider, repeat=repeat)
-            except Exception as exc:
-                self.after(0, lambda: self._on_tts_error(token, exc))
-                return
-            self.after(0, lambda: self._on_tts_done(token, result))
-
-        threading.Thread(target=worker, daemon=True).start()
+        run_bg(
+            self,
+            lambda: self.engine.speak_current(provider, repeat=repeat),
+            on_done=lambda result: self._on_tts_done(token, result),
+            on_error=lambda exc: self._on_tts_error(token, exc),
+            name="tts-speak",
+        )
 
     def _show_slow_tts_notice(self, token: int) -> None:
         if token == self.tts_token and self.tts_running:
@@ -720,15 +718,13 @@ class WorkspaceMixin:
         question = self.engine.current_record.clean_question
         language = detect_language(question)
 
-        def worker() -> None:
-            try:
-                result = self.transcriber.transcribe(path, language=language)
-            except Exception as exc:
-                self.after(0, lambda: self._on_transcript_error(exc))
-                return
-            self.after(0, lambda: self._on_transcript_done(index, result.text))
-
-        threading.Thread(target=worker, daemon=True).start()
+        run_bg(
+            self,
+            lambda: self.transcriber.transcribe(path, language=language),
+            on_done=lambda result: self._on_transcript_done(index, result.text),
+            on_error=self._on_transcript_error,
+            name="stt-transcribe",
+        )
 
     def _on_transcript_done(self, index: int, transcript: str) -> None:
         if self.engine is None:
@@ -764,18 +760,19 @@ class WorkspaceMixin:
         self.runtime_badge_var.set("Session: Follow-up")
         self.warning_var.set("전사/메모 내용을 기반으로 꼬리질문을 생성합니다.")
 
-        def worker() -> None:
-            follow_up = generate_follow_up_question(
+        run_bg(
+            self,
+            lambda: generate_follow_up_question(
                 question,
                 transcript,
                 language,
                 provider=self.config_model.followup_provider,
                 ollama_model=self.config_model.ollama_model,
                 ollama_host=self.config_model.ollama_host,
-            )
-            self.after(0, lambda: self._on_follow_up_done(follow_up))
-
-        threading.Thread(target=worker, daemon=True).start()
+            ),
+            on_done=self._on_follow_up_done,
+            name="follow-up",
+        )
 
     def _on_follow_up_done(self, follow_up: str) -> None:
         if self.engine is None:
@@ -810,21 +807,22 @@ class WorkspaceMixin:
         session_id = self.engine.session.session_id
         current_index = self.engine.current_index
 
-        def worker() -> None:
-            try:
-                language, speaker = provider.resolve_voice(follow_up)
-                provider.speak(
-                    text=follow_up,
-                    cache_key=f"{session_id}-{current_index + 1}-followup",
-                    language=language,
-                    speaker=speaker,
-                )
-            except Exception as exc:
-                self.after(0, lambda: self._on_tts_error(token, exc))
-                return
-            self.after(0, lambda: self._on_follow_up_tts_done(token))
+        def speak_follow_up() -> None:
+            language, speaker = provider.resolve_voice(follow_up)
+            provider.speak(
+                text=follow_up,
+                cache_key=f"{session_id}-{current_index + 1}-followup",
+                language=language,
+                speaker=speaker,
+            )
 
-        threading.Thread(target=worker, daemon=True).start()
+        run_bg(
+            self,
+            speak_follow_up,
+            on_done=lambda _result: self._on_follow_up_tts_done(token),
+            on_error=lambda exc: self._on_tts_error(token, exc),
+            name="tts-follow-up",
+        )
 
     def _on_follow_up_tts_done(self, token: int) -> None:
         if token != self.tts_token:
