@@ -27,6 +27,7 @@ from ai_interviewer.engine import InterviewEngine
 from ai_interviewer.followup import generate_follow_up_question
 from ai_interviewer.i18n import SUPPORTED_UI_LANGUAGES, tr, ui_language_label
 from ai_interviewer.question_parser import detect_language, parse_questions
+from ai_interviewer.session_browser import SessionBrowserDialog
 from ai_interviewer.stt import STTError, input_device_id_from_label, list_input_devices
 from ai_interviewer.tasks import run_bg
 from ai_interviewer.tts.qwen_provider import QwenTTSProvider
@@ -241,6 +242,7 @@ class WorkspaceMixin:
         self.open_folder_button = ttk.Button(controls, text=tr("ws.btn_session_folder"), command=self._open_session_folder, style="Tool.TButton")
         self.sound_test_button = ttk.Button(controls, text=tr("ws.btn_sound_test"), command=self._test_system_sound, style="Tool.TButton")
         self.diagnostics_button = ttk.Button(controls, text=tr("ws.btn_diagnostics"), command=self._diagnose_tts, style="Tool.TButton")
+        self.sessions_button = ttk.Button(controls, text=tr("ws.btn_sessions"), command=self._open_session_browser, style="Tool.TButton")
 
         buttons = (
             self.prev_button,
@@ -255,6 +257,7 @@ class WorkspaceMixin:
             self.open_folder_button,
             self.sound_test_button,
             self.diagnostics_button,
+            self.sessions_button,
         )
         for index, button in enumerate(buttons):
             row, column = divmod(index, 4)
@@ -930,3 +933,7 @@ class WorkspaceMixin:
             os.startfile(path)  # type: ignore[attr-defined]
         else:
             messagebox.showinfo(tr("ws.session_folder_title"), str(path))
+
+    def _open_session_browser(self) -> None:
+        active_session_id = self.engine.session.session_id if self.engine is not None else None
+        SessionBrowserDialog(self, self.config_model.sessions_root, active_session_id=active_session_id)

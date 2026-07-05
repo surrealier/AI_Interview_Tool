@@ -339,6 +339,21 @@ KO: dict[str, str] = {
     "ws.refresh": "새로고침",
     "ws.windows_fallback": "Windows fallback",
     "ws.set_ui_language": "UI 언어",
+    "ws.btn_sessions": "세션 기록",
+    # session browser
+    "sb.title": "세션 기록",
+    "sb.col_session": "세션",
+    "sb.col_created": "생성 일시",
+    "sb.col_questions": "질문",
+    "sb.col_answered": "답변",
+    "sb.col_size": "용량",
+    "sb.open_folder": "폴더 열기",
+    "sb.delete": "삭제",
+    "sb.refresh": "새로고침",
+    "sb.active_suffix": " (진행 중)",
+    "sb.cannot_delete_active": "진행 중인 세션은 삭제할 수 없습니다.",
+    "sb.delete_title": "세션 삭제",
+    "sb.delete_ask": "세션 {session_id}을(를) 삭제할까요?\n녹음, 전사, 메모가 모두 삭제되며 되돌릴 수 없습니다.",
 }
 
 
@@ -637,6 +652,21 @@ EN: dict[str, str] = {
     "ws.refresh": "Refresh",
     "ws.windows_fallback": "Windows fallback",
     "ws.set_ui_language": "UI language",
+    "ws.btn_sessions": "Sessions",
+    # session browser
+    "sb.title": "Session history",
+    "sb.col_session": "Session",
+    "sb.col_created": "Created",
+    "sb.col_questions": "Questions",
+    "sb.col_answered": "Answered",
+    "sb.col_size": "Size",
+    "sb.open_folder": "Open folder",
+    "sb.delete": "Delete",
+    "sb.refresh": "Refresh",
+    "sb.active_suffix": " (active)",
+    "sb.cannot_delete_active": "The active session cannot be deleted.",
+    "sb.delete_title": "Delete session",
+    "sb.delete_ask": "Delete session {session_id}?\nRecordings, transcripts, and notes will be removed permanently.",
 }
 
 
