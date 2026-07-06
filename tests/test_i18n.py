@@ -12,9 +12,10 @@ from ai_interviewer.i18n import EN, KO, set_language, tr
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 # Files allowed to contain Korean literals: interview content (spoken text,
-# question packs, follow-up templates) and the catalog itself. "한국어" as a
-# content-language name is also allowed anywhere.
-ALLOWED_KOREAN_FILES = {"i18n.py", "default_questions.py", "followup.py", "qwen_provider.py"}
+# question packs, follow-up templates), the catalog itself, and the dev-only
+# theme gallery (its Korean samples exist to eyeball the Malgun Gothic
+# fallback). "한국어" as a content-language name is also allowed anywhere.
+ALLOWED_KOREAN_FILES = {"i18n.py", "default_questions.py", "followup.py", "qwen_provider.py", "dev_gallery.py"}
 ALLOWED_KOREAN_LITERALS = {"한국어", "Windows 기본 음성", "기본 인성 면접"}
 
 
