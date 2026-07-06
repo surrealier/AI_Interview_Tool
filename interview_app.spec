@@ -19,7 +19,6 @@ for package in (
     "PIL",
     "sounddevice",
     "faster_whisper",
-    "ttkbootstrap",
 ):
     try:
         hiddenimports += collect_submodules(package)
@@ -39,13 +38,10 @@ datas = [
     ("docs/release-checklist.md", "docs"),
     ("docs/troubleshooting.md", "docs"),
     ("assets/icon.ico", "assets"),
+    ("assets/icons", "assets/icons"),
 ]
 try:
     datas += collect_data_files("qwen_tts", include_py_files=False)
-except Exception:
-    pass
-try:
-    datas += collect_data_files("ttkbootstrap", include_py_files=False)
 except Exception:
     pass
 
@@ -60,8 +56,35 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     # polars/matplotlib/pandas ride in from unrelated packages in a shared
-    # build environment; the app does not use them.
-    excludes=["tests", "polars", "matplotlib", "pandas", "IPython", "jedi"],
+    # build environment; the app does not use them. tkinter is fully replaced
+    # by PySide6, and the Qt Essentials modules the app never imports are
+    # excluded so their DLLs/plugins stay out of the bundle (the app uses
+    # QtCore/QtGui/QtWidgets/QtSvg only).
+    excludes=[
+        "tests",
+        "polars",
+        "matplotlib",
+        "pandas",
+        "IPython",
+        "jedi",
+        "tkinter",
+        "PySide6.QtQml",
+        "PySide6.QtQuick",
+        "PySide6.QtQuickWidgets",
+        "PySide6.QtQuickControls2",
+        "PySide6.QtNetwork",
+        "PySide6.QtOpenGL",
+        "PySide6.QtOpenGLWidgets",
+        "PySide6.QtPrintSupport",
+        "PySide6.QtSql",
+        "PySide6.QtXml",
+        "PySide6.QtDBus",
+        "PySide6.QtTest",
+        "PySide6.QtConcurrent",
+        "PySide6.QtHelp",
+        "PySide6.QtUiTools",
+        "PySide6.QtDesigner",
+    ],
     noarchive=False,
     optimize=0,
 )

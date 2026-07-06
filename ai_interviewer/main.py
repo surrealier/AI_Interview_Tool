@@ -12,8 +12,10 @@ def main(argv: list[str] | None = None) -> int:
     install_thread_excepthooks()
     if "--smoke" in args:
         return run_smoke_check()
+    if "--smoke-ui" in args:
+        return run_ui_smoke_check()
 
-    from ai_interviewer.gui import run_app
+    from ai_interviewer.ui.app import run_app
 
     return run_app()
 
@@ -54,6 +56,38 @@ def run_smoke_check() -> int:
     except Exception:
         logger.exception("smoke check crashed")
         return 2
+
+
+def run_ui_smoke_check() -> int:
+    """Packaged-build GUI check: boot the Qt shell offscreen, pump the event
+    loop for two seconds, exit 0. Verifies Qt DLLs/plugins made it into the
+    bundle without needing a desktop session."""
+    import logging
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    logger = logging.getLogger("ai_interviewer.smoke")
+    try:
+        from PySide6.QtCore import QTimer
+
+        from ai_interviewer.ui.app import create_app
+        from ai_interviewer.ui.context import AppContext
+        from ai_interviewer.ui.main_window import MainWindow
+        from ai_interviewer.ui.theme.manager import ThemeManager
+
+        app = create_app([])
+        ctx = AppContext()
+        ThemeManager(ctx.config_model).apply(app)
+        window = MainWindow(ctx)
+        window.show()
+        QTimer.singleShot(2000, app.quit)
+        app.exec()
+        window.close()
+        logger.info("UI smoke check OK")
+        return 0
+    except Exception:
+        logger.exception("UI smoke check crashed")
+        return 3
 
 
 if __name__ == "__main__":

@@ -16,7 +16,14 @@ if ($Smoke.ExitCode -ne 0) {
 }
 Write-Host "smoke check: OK (exit 0)"
 
-# 2) Launch smoke: the GUI must stay alive for 5 seconds.
+# 2) Offscreen GUI smoke: Qt DLLs/plugins must load and the shell must boot.
+$UiSmoke = Start-Process -FilePath $Exe -ArgumentList "--smoke-ui" -PassThru -Wait
+if ($UiSmoke.ExitCode -ne 0) {
+    throw "--smoke-ui failed with exit code $($UiSmoke.ExitCode). Check %APPDATA%\AIInterview\logs\app.log"
+}
+Write-Host "ui smoke check: OK (exit 0)"
+
+# 3) Launch smoke: the GUI must stay alive for 5 seconds.
 $App = Start-Process -FilePath $Exe -PassThru
 Start-Sleep -Seconds 5
 if ($App.HasExited) {

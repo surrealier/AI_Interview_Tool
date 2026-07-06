@@ -22,12 +22,13 @@ $Tracked = @(
     "pyinstaller",
     "qwen-tts",
     "safetensors",
+    "PySide6-Essentials",
+    "shiboken6",
     "sounddevice",
     "soundfile",
     "tokenizers",
     "torch",
-    "transformers",
-    "ttkbootstrap"
+    "transformers"
 )
 
 $Freeze = & $Python -m pip freeze

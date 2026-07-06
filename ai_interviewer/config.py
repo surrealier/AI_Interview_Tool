@@ -122,7 +122,10 @@ class AppConfig:
     followup_provider: str = "Auto"
     ollama_model: str = ""
     ollama_host: str = "http://127.0.0.1:11434"
-    ui_theme: str = "light"
+    # "system" | "light" | "dark". Replaces the legacy `ui_theme` key, whose
+    # only ever-written value ("light") described a dark palette; old configs
+    # simply fall back to the default here.
+    ui_theme_mode: str = "system"
     ui_language: str = ""
     setup_completed: bool = False
     interview_type: str = "hr"
@@ -185,6 +188,8 @@ class AppConfig:
         if config.torch_dtype == "bfloat16":
             config.torch_dtype = "auto"
         config.tts_backend = LEGACY_TTS_BACKEND_VALUES.get(config.tts_backend, config.tts_backend)
+        if config.ui_theme_mode not in {"system", "light", "dark"}:
+            config.ui_theme_mode = "system"
         return config
 
     def save(self, path: Path | None = None) -> None:

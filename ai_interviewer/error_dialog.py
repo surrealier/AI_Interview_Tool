@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 import threading
 import traceback
 from types import TracebackType
-
-from ai_interviewer.config import default_log_path
-from ai_interviewer.i18n import tr
 
 
 logger = logging.getLogger(__name__)
@@ -24,8 +20,10 @@ def format_exception(exc_type: type[BaseException], exc: BaseException, tb: Trac
 def show_crash_dialog(exc_type: type[BaseException], exc: BaseException, tb: TracebackType | None) -> None:
     """Show a friendly crash dialog with the log location and a copyable traceback.
 
-    Safe to call from any state; falls back silently if Tk itself is unusable.
-    Re-entrant calls (an exception raised while the dialog is open) are dropped.
+    Safe to call from any state; falls back silently if the GUI toolkit is
+    unusable. Re-entrant calls (an exception raised while the dialog is open)
+    are dropped. The Qt dialog is imported lazily so that headless entry
+    points (--smoke) never load PySide6.
     """
     global _dialog_open
     with _dialog_lock:
@@ -33,7 +31,9 @@ def show_crash_dialog(exc_type: type[BaseException], exc: BaseException, tb: Tra
             return
         _dialog_open = True
     try:
-        _show_crash_dialog(exc_type, exc, tb)
+        from ai_interviewer.ui.dialogs.crash_dialog import show_qt_crash_dialog
+
+        show_qt_crash_dialog(exc_type, exc, tb)
     except Exception:
         logger.exception("Could not display the crash dialog.")
     finally:
@@ -41,80 +41,11 @@ def show_crash_dialog(exc_type: type[BaseException], exc: BaseException, tb: Tra
             _dialog_open = False
 
 
-def _show_crash_dialog(exc_type: type[BaseException], exc: BaseException, tb: TracebackType | None) -> None:
-    import tkinter as tk
-    from tkinter import ttk
-
-    detail = format_exception(exc_type, exc, tb)
-    log_path = default_log_path()
-
-    root = tk._default_root  # noqa: SLF001 - only sane way to find a live Tk instance
-    owns_root = root is None
-    if owns_root:
-        root = tk.Tk()
-        root.withdraw()
-
-    window = tk.Toplevel(root)
-    window.title(tr("crash.title"))
-    window.geometry("640x420")
-    window.minsize(520, 320)
-    try:
-        window.attributes("-topmost", True)
-    except tk.TclError:
-        pass
-
-    frame = ttk.Frame(window, padding=16)
-    frame.pack(fill="both", expand=True)
-
-    ttk.Label(
-        frame,
-        text=tr("crash.heading"),
-        font=("Segoe UI", 12, "bold"),
-    ).pack(anchor="w")
-    ttk.Label(
-        frame,
-        text=tr("crash.body", log_path=log_path),
-        justify="left",
-    ).pack(anchor="w", pady=(8, 8))
-
-    text = tk.Text(frame, height=10, wrap="none")
-    text.insert("1.0", detail)
-    text.configure(state="disabled")
-    text.pack(fill="both", expand=True)
-
-    buttons = ttk.Frame(frame)
-    buttons.pack(fill="x", pady=(10, 0))
-
-    def copy_detail() -> None:
-        window.clipboard_clear()
-        window.clipboard_append(detail)
-
-    def open_log_folder() -> None:
-        folder = log_path.parent
-        try:
-            folder.mkdir(parents=True, exist_ok=True)
-            os.startfile(str(folder))  # noqa: S606 - intentional shell open
-        except OSError:
-            logger.exception("Could not open the log folder: %s", folder)
-
-    ttk.Button(buttons, text=tr("crash.copy"), command=copy_detail).pack(side="left")
-    ttk.Button(buttons, text=tr("crash.open_log"), command=open_log_folder).pack(side="left", padx=(8, 0))
-    ttk.Button(buttons, text=tr("common.close"), command=window.destroy).pack(side="right")
-
-    window.transient(root)
-    try:
-        window.grab_set()
-    except tk.TclError:
-        pass
-    if owns_root:
-        # No mainloop is running (top-level excepthook); pump events until the
-        # dialog closes, then drop the temporary root.
-        root.wait_window(window)
-        root.destroy()
-
-
 def install_thread_excepthooks() -> None:
-    """Log (and best-effort surface) exceptions from non-Tk threads and interpreter top level."""
+    """Log (and best-effort surface) exceptions from worker threads and the
+    interpreter top level. PySide6 routes unhandled slot exceptions through
+    sys.excepthook as well (verified on the pinned version), so Qt callback
+    errors also land here."""
 
     def sys_hook(exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
         if issubclass(exc_type, KeyboardInterrupt):

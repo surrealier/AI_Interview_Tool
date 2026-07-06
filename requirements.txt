@@ -1,5 +1,6 @@
-# Core desktop runtime uses the Python standard library on Windows plus the UI shell.
-ttkbootstrap>=1.10.1
+# Core desktop runtime: PySide6 Essentials only (QtCore/Gui/Widgets/Svg);
+# the PySide6 metapackage would pull WebEngine/Charts/3D Addons we never use.
+PySide6-Essentials>=6.8,<7
 # Install optional profiles as needed:
 #   python -m pip install -r requirements-interactive.txt
 #   python -m pip install -r requirements-qwen.txt

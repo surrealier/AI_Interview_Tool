@@ -6,6 +6,21 @@ Quality hardening toward the first commercial release.
 
 ### Added
 
+- Complete UI rewrite on Qt (PySide6): per-monitor high-DPI rendering
+  (crisp at 125%/150% scaling), a token-driven design system with light and
+  dark themes, and a System/Light/Dark theme switch (setup wizard options and
+  Media settings; the default follows the Windows color scheme).
+- Vector icon set (Lucide, ISC license) across all controls, tinted per theme.
+- Non-blocking runtime diagnostics: the pre-session and TTS diagnostics checks
+  now run in the background instead of briefly freezing the window.
+- `--smoke-ui` flag: offscreen GUI boot check for packaged builds, wired into
+  `scripts/smoke_test_dist.ps1`.
+
+### Removed
+
+- Tkinter/ttkbootstrap UI stack (fully replaced by PySide6-Essentials; see
+  `THIRD_PARTY_NOTICES.md` for the Qt LGPL-3.0 notice).
+
 - In-app model downloader: the setup wizard, settings, and diagnostics can
   download the Qwen3-TTS models with progress, speed/ETA, disk-space preflight,
   cancel, and resume. Pinned upstream revisions are recorded per model folder.

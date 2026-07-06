@@ -56,6 +56,9 @@ KO: dict[str, str] = {
     "common.browse": "찾아보기",
     "common.selected": "선택됨",
     "common.choose": "선택",
+    "common.yes": "예",
+    "common.no": "아니요",
+    "common.ok": "확인",
     # ui languages
     "lang.ui.ko": "한국어",
     "lang.ui.en": "English",
@@ -354,6 +357,30 @@ KO: dict[str, str] = {
     "sb.cannot_delete_active": "진행 중인 세션은 삭제할 수 없습니다.",
     "sb.delete_title": "세션 삭제",
     "sb.delete_ask": "세션 {session_id}을(를) 삭제할까요?\n녹음, 전사, 메모가 모두 삭제되며 되돌릴 수 없습니다.",
+    "sb.loading": "세션을 불러오는 중...",
+    # signal visual
+    "signal.voice": "VOICE SIGNAL",
+    "signal.local": "LOCAL SESSION",
+    # interviewer video stage
+    "video.placeholder": "면접관 스테이지\n더블클릭하면 전체 화면",
+    "video.not_found": "영상 파일을 찾을 수 없습니다\n미디어 설정에서 파일을 선택하세요.",
+    "video.runtime_missing": "비디오 런타임이 없습니다\nrequirements-interactive.txt를 설치하세요.",
+    "video.cannot_open": "선택한 영상 파일을 열 수 없습니다.",
+    "video.fullscreen_title": "AI Interviewer - 면접관 영상",
+    # theme
+    "theme.system": "시스템",
+    "theme.light": "라이트",
+    "theme.dark": "다크",
+    "ws.set_theme": "테마",
+    # misc additions (Qt migration)
+    "ws.tts_fallback_title": "Qwen3-TTS 폴백",
+    "app.diag_checking": "런타임 진단 확인 중...",
+    "common.on": "켬",
+    "common.off": "끔",
+    "wizard.review_stt": "음성 인식(STT)",
+    "wizard.review_fallback": "Windows 폴백",
+    "wizard.sound_model_label": "모델",
+    "wizard.sound_speaker_label": "화자",
 }
 
 
@@ -369,6 +396,9 @@ EN: dict[str, str] = {
     "common.browse": "Browse",
     "common.selected": "Selected",
     "common.choose": "Choose",
+    "common.yes": "Yes",
+    "common.no": "No",
+    "common.ok": "OK",
     # ui languages
     "lang.ui.ko": "한국어",
     "lang.ui.en": "English",
@@ -667,6 +697,30 @@ EN: dict[str, str] = {
     "sb.cannot_delete_active": "The active session cannot be deleted.",
     "sb.delete_title": "Delete session",
     "sb.delete_ask": "Delete session {session_id}?\nRecordings, transcripts, and notes will be removed permanently.",
+    "sb.loading": "Loading sessions...",
+    # signal visual
+    "signal.voice": "VOICE SIGNAL",
+    "signal.local": "LOCAL SESSION",
+    # interviewer video stage
+    "video.placeholder": "INTERVIEWER STAGE\nDouble-click for fullscreen",
+    "video.not_found": "Video file not found\nSelect a file in Media settings.",
+    "video.runtime_missing": "Video runtime missing\nInstall requirements-interactive.txt",
+    "video.cannot_open": "Cannot open the selected video file.",
+    "video.fullscreen_title": "AI Interviewer - Interviewer Video",
+    # theme
+    "theme.system": "System",
+    "theme.light": "Light",
+    "theme.dark": "Dark",
+    "ws.set_theme": "Theme",
+    # misc additions (Qt migration)
+    "ws.tts_fallback_title": "Qwen3-TTS fallback",
+    "app.diag_checking": "Checking runtime diagnostics...",
+    "common.on": "ON",
+    "common.off": "OFF",
+    "wizard.review_stt": "Speech-to-text (STT)",
+    "wizard.review_fallback": "Windows fallback",
+    "wizard.sound_model_label": "Model",
+    "wizard.sound_speaker_label": "Speaker",
 }
 
 

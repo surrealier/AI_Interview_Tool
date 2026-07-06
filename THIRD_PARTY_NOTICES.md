@@ -9,8 +9,31 @@ runtime profile. The pinned versions for a release build are recorded in
 
 | Package | License |
 | --- | --- |
-| Python standard library / Tkinter | PSF License |
-| `ttkbootstrap` | MIT |
+| Python standard library | PSF License |
+| `PySide6-Essentials` (Qt for Python) | LGPL-3.0 |
+| Qt 6 (bundled DLLs: QtCore, QtGui, QtWidgets, QtSvg and plugins) | LGPL-3.0 |
+| `shiboken6` | LGPL-3.0 |
+| Lucide Icons (bundled SVGs under `assets/icons/`) | ISC |
+
+### Qt / PySide6 LGPL-3.0 compliance
+
+PySide6 and the Qt 6 libraries are **dynamically linked** and shipped as
+unmodified binaries inside the application folder (onedir layout). Users may
+replace them with compatible builds of the same libraries by swapping the
+corresponding files in the install directory. The application must continue to
+be distributed in this onedir layout (never as a single self-extracting exe)
+to preserve this replaceability.
+
+- Qt source code: https://download.qt.io/official_releases/qt/ and
+  https://code.qt.io
+- PySide6/shiboken6 source code: https://pypi.org/project/PySide6-Essentials/
+  (sdist) and https://code.qt.io/cgit/pyside/pyside-setup.git
+- License texts: `docs/third_party_licenses/LGPL-3.0.txt` and
+  `docs/third_party_licenses/GPL-3.0.txt` (the LGPL-3.0 is a set of additional
+  permissions on top of the GPL-3.0).
+
+Lucide icon SVGs are bundled under `assets/icons/`; license text at
+`docs/third_party_licenses/LUCIDE-LICENSE.txt`.
 
 ## Qwen TTS Profile
 

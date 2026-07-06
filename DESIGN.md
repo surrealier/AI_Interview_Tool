@@ -15,10 +15,21 @@ AI Interviewer should feel like a focused interview studio, not a settings form.
 
 ## Visual System
 
-- Theme: dark interview studio with blue voice accents and teal confirmation accents.
+- Framework: Qt 6 (PySide6, Fusion style). All colors, spacing, radii, and
+  type sizes come from design tokens in `ai_interviewer/ui/theme/tokens.py`;
+  the stylesheet is generated from tokens (`theme/qss.py`) — no hex values in
+  widget code.
+- Theme: two palettes, dark (interview-studio default look) and light, with a
+  System/Light/Dark mode switch. "System" follows the Windows color scheme
+  live. Both palettes keep body text at WCAG AA contrast (enforced by test).
+- Accents: blue voice accents and teal confirmation accents in both themes.
 - Surfaces: no floating nested card stacks. Use one main shell, stage surfaces, selected tiles, and compact inspector panels.
-- Typography: Segoe UI, strong hierarchy, no viewport-dependent font sizing.
-- Motion: short setup transitions only. No heavy animation that competes with TTS or recording.
+- Typography: Segoe UI (Malgun Gothic fallback for Korean), strong hierarchy, no viewport-dependent font sizing.
+- Icons: Lucide SVGs (`assets/icons/`), stroke-tinted per theme at the device
+  pixel ratio — no emoji glyphs.
+- DPI: per-monitor high-DPI aware (Qt 6 PassThrough rounding); no fixed-pixel
+  bitmaps.
+- Motion: short setup transitions only (150 ms step fade). No heavy animation that competes with TTS or recording.
 - Media: interviewer video is the primary visual. When no video file exists, use a generated interviewer placeholder and audio signal canvas.
 
 ## Interaction Rules
