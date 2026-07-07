@@ -625,7 +625,10 @@ class WorkspaceScreen(QWidget):
             self,
             tr("ws.video_dialog_title"),
             "",
-            "Video files (*.mp4 *.avi *.mov *.mkv);;All files (*.*)",
+            "Interviewer media (*.mp4 *.avi *.mov *.mkv *.png *.jpg *.jpeg *.webp *.bmp);;"
+            "Video files (*.mp4 *.avi *.mov *.mkv);;"
+            "Photo files (*.png *.jpg *.jpeg *.webp *.bmp);;"
+            "All files (*.*)",
         )
         if path:
             self.ctx.video_path_var.set(path)

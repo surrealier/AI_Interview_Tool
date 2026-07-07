@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +11,19 @@ from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 from ai_interviewer.i18n import tr
 
 
+# Still-photo interviewers: a single generated portrait (see
+# docs/interviewer_asset_prompt.md) is displayed with a slow breathing zoom so
+# it reads as a living presence rather than a frozen picture.
+IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp"})
+# One breathing cycle ≈ 2*pi*period frames; at 50 ms/frame period 16 ≈ 5 s.
+_BREATH_PERIOD = 16.0
+_BREATH_AMPLITUDE = 0.022  # peak zoom, ~2.2% — deliberately subtle
+
+
 class InterviewerVideoWidget(QLabel):
-    """Interviewer stage: plays the configured video via cv2, or animates a
-    QPainter-drawn synthetic interviewer when no video is available.
+    """Interviewer stage: plays the configured video via cv2, shows a single
+    generated portrait with a subtle breathing zoom, or animates a
+    QPainter-drawn synthetic interviewer when nothing is configured.
     Double-click toggles a fullscreen mirror window."""
 
     def __init__(self, width: int = 520, height: int = 292, parent: QWidget | None = None) -> None:
@@ -25,6 +36,11 @@ class InterviewerVideoWidget(QLabel):
         self._running = False
         self._synthetic_mode = False
         self._synthetic_frame = 0
+        self._image_mode = False
+        self._base_image: QImage | None = None
+        self._image_phase = 0
+        self._cover: QPixmap | None = None
+        self._cover_size: tuple[int, int] | None = None
         self._last_frame: QImage | None = None
         self._fullscreen: _FullscreenVideoWindow | None = None
 
@@ -42,6 +58,9 @@ class InterviewerVideoWidget(QLabel):
         self._synthetic_timer = QTimer(self)
         self._synthetic_timer.setInterval(80)
         self._synthetic_timer.timeout.connect(self._tick_synthetic)
+        self._image_timer = QTimer(self)
+        self._image_timer.setInterval(50)
+        self._image_timer.timeout.connect(self._tick_image)
 
     # -- public API (same shape as the old InterviewerVideoPlayer) ---------
 
@@ -53,11 +72,25 @@ class InterviewerVideoWidget(QLabel):
     def start(self) -> None:
         if self._running:
             return
-        if self.video_path is None or not self.video_path.exists():
+        path = self.video_path
+        if path is None or not path.exists():
             self._running = True
             self._synthetic_mode = True
             self._synthetic_frame = 0
             self._synthetic_timer.start()
+            return
+        if path.suffix.lower() in IMAGE_SUFFIXES:
+            image = QImage(str(path))
+            if image.isNull():
+                self._show_placeholder(tr("video.cannot_open"))
+                return
+            self._base_image = image
+            self._cover_size = None
+            self._image_phase = 0
+            self._running = True
+            self._image_mode = True
+            self._render_breathing()  # paint frame 0 immediately, no flicker
+            self._image_timer.start()
             return
         if not self._load_cv2():
             self._show_placeholder(tr("video.runtime_missing"))
@@ -76,8 +109,10 @@ class InterviewerVideoWidget(QLabel):
     def stop(self) -> None:
         self._running = False
         self._synthetic_mode = False
+        self._image_mode = False
         self._video_timer.stop()
         self._synthetic_timer.stop()
+        self._image_timer.stop()
         self._release_capture()
         self._show_placeholder(tr("video.placeholder"))
 
@@ -127,6 +162,27 @@ class InterviewerVideoWidget(QLabel):
             return
         self._render_image(_draw_synthetic_interviewer(self._stage_width, self._stage_height, self._synthetic_frame))
         self._synthetic_frame += 1
+
+    def _tick_image(self) -> None:
+        if not self._running or not self._image_mode or self._base_image is None:
+            return
+        self._image_phase += 1
+        self._render_breathing()
+
+    def _render_breathing(self) -> None:
+        if self._base_image is None:
+            return
+        width = max(1, self.width())
+        height = max(1, self.height())
+        # Recompute the center-cropped cover only when the stage resizes.
+        if self._cover is None or self._cover_size != (width, height):
+            self._cover = _cover_crop(self._base_image, width, height)
+            self._cover_size = (width, height)
+        self.setPixmap(_breathe(self._cover, width, height, self._image_phase))
+        self.setText("")
+        self._last_frame = self._base_image
+        if self._fullscreen is not None:
+            self._fullscreen.show_frame(self._base_image)
 
     def _render_image(self, image: QImage) -> None:
         self._last_frame = image
@@ -207,6 +263,37 @@ def _letterboxed(image: QImage, width: int, height: int) -> QPixmap:
         Qt.TransformationMode.SmoothTransformation,
     )
     return pixmap
+
+
+def _cover_crop(image: QImage, width: int, height: int) -> QPixmap:
+    """Scale the portrait to fill width×height (no letterbox bars) and
+    center-crop the overflow, the way a video would fill the stage."""
+    scaled = QPixmap.fromImage(image).scaled(
+        width,
+        height,
+        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    x = max(0, (scaled.width() - width) // 2)
+    y = max(0, (scaled.height() - height) // 2)
+    return scaled.copy(x, y, width, height)
+
+
+def _breathe(cover: QPixmap, width: int, height: int, phase: int) -> QPixmap:
+    """Zoom the cover between 1.0 and 1+amplitude on a slow cosine and
+    center-crop back to the stage — a gentle 'breathing' motion."""
+    zoom = 1.0 + _BREATH_AMPLITUDE * (0.5 - 0.5 * math.cos(phase / _BREATH_PERIOD))
+    zoom_w = max(width, int(round(width * zoom)))
+    zoom_h = max(height, int(round(height * zoom)))
+    zoomed = cover.scaled(
+        zoom_w,
+        zoom_h,
+        Qt.AspectRatioMode.IgnoreAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    x = (zoom_w - width) // 2
+    y = (zoom_h - height) // 2
+    return zoomed.copy(x, y, width, height)
 
 
 def _draw_synthetic_interviewer(width: int, height: int, frame: int) -> QImage:

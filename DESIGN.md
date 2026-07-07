@@ -30,7 +30,10 @@ AI Interviewer should feel like a focused interview studio, not a settings form.
 - DPI: per-monitor high-DPI aware (Qt 6 PassThrough rounding); no fixed-pixel
   bitmaps.
 - Motion: short setup transitions only (150 ms step fade). No heavy animation that competes with TTS or recording.
-- Media: interviewer video is the primary visual. When no video file exists, use a generated interviewer placeholder and audio signal canvas.
+- Media: interviewer video is the primary visual. A single generated portrait
+  photo is also supported and shown with a subtle breathing zoom so it reads as
+  a living presence (see `docs/interviewer_asset_prompt.md`). When neither exists,
+  use the QPainter interviewer placeholder and audio signal canvas.
 
 ## Interaction Rules
 
