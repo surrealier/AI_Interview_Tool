@@ -68,8 +68,14 @@ if (Test-Path $LicensesDir) {
     Copy-Item -Recurse -Force $LicensesDir (Join-Path $DocsDir "third_party_licenses")
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $DistDir "models") | Out-Null
-# Users drop an optional interviewer video into assets\ next to the EXE.
-New-Item -ItemType Directory -Force -Path (Join-Path $DistDir "assets") | Out-Null
+# Ship the realistic default interviewer video next to the EXE. Users can
+# replace it later from the app's media settings.
+$DistAssetsDir = Join-Path $DistDir "assets"
+New-Item -ItemType Directory -Force -Path $DistAssetsDir | Out-Null
+$DefaultInterviewerVideo = Join-Path $ProjectRoot "assets\interviewer.mp4"
+if (Test-Path $DefaultInterviewerVideo) {
+    Copy-Item -LiteralPath $DefaultInterviewerVideo -Destination $DistAssetsDir -Force
+}
 
 $ModelWeights = Get-ChildItem (Join-Path $DistDir "models") -Recurse -File -ErrorAction SilentlyContinue
 if ($ModelWeights) {

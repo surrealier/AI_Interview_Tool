@@ -18,6 +18,7 @@ build_version_info.txt
 *.wav
 *.mp3
 *.mp4
+!assets/interviewer.mp4
 *.avi
 *.mov
 *.mkv
