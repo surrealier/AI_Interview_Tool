@@ -413,6 +413,8 @@ KO: dict[str, str] = {
     "ws.blueprint_generating": "직무 기반 질문 설계를 생성하는 중...",
     "ws.blueprint_done": "질문 설계를 적용했습니다. ({engine})",
     "ws.blueprint_failed": "질문 설계 생성에 실패해 기본 질문 팩을 사용합니다.",
+    "ws.btn_design_plan": "질문 설계",
+    "ws.blueprint_needs_engine": "질문 설계에는 로컬 Ollama 또는 Claude 엔진이 필요합니다. 설정 → AI 코치에서 선택하세요.",
     # -- AI settings -----------------------------------------------------
     "ws.tab_ai": "AI 코치",
     "ws.set_ai_provider": "분석 엔진",
@@ -867,6 +869,8 @@ EN: dict[str, str] = {
     "ws.blueprint_generating": "Designing a role-specific question plan...",
     "ws.blueprint_done": "Question plan applied. ({engine})",
     "ws.blueprint_failed": "Could not design a plan; using the question pack instead.",
+    "ws.btn_design_plan": "Design plan",
+    "ws.blueprint_needs_engine": "Designing a plan needs the local Ollama or Claude engine. Pick one under Settings → AI coach.",
     # -- AI settings -----------------------------------------------------
     "ws.tab_ai": "AI coach",
     "ws.set_ai_provider": "Analysis engine",

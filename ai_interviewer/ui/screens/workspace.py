@@ -47,6 +47,7 @@ from ai_interviewer.intelligence import (
     AnswerInsight,
     analyze_answer_turn,
     follow_up_for_answer,
+    generate_blueprint,
     insight_from_record,
     provider_statuses,
 )
@@ -85,6 +86,7 @@ class WorkspaceScreen(QWidget):
         self.ctx = ctx
         self.window = window
         self._evaluating = False
+        self._pending_blueprint = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(18, 16, 18, 16)
@@ -189,8 +191,11 @@ class WorkspaceScreen(QWidget):
         load_button.clicked.connect(self._apply_selected_question_set)
         file_button = IconButton(tr("common.file"), icon_name="file-text", kind="tool")
         file_button.clicked.connect(self._load_questions_file)
+        self.design_button = IconButton(tr("ws.btn_design_plan"), icon_name="sparkles", kind="tool")
+        self.design_button.clicked.connect(self._design_question_plan)
         pack_row.addWidget(load_button)
         pack_row.addWidget(file_button)
+        pack_row.addWidget(self.design_button)
         layout.addSpacing(14)
         layout.addLayout(pack_row)
 
@@ -760,6 +765,69 @@ class WorkspaceScreen(QWidget):
             tr("ws.question_set_loaded_ko") if language == "Korean" else tr("ws.question_set_loaded_en")
         )
 
+    def _design_question_plan(self) -> None:
+        """Ask the configured engine for a role-specific question plan.
+
+        Offline there is nothing to design from, so the button explains that
+        instead of silently rewriting the pack with the pack.
+        """
+        ctx = self.ctx
+        ctx.apply_config_from_ui()
+        chain = ctx.ai_chain()
+        if not chain.enabled:
+            messages.info(
+                self.window,
+                tr("ws.btn_design_plan"),
+                tr("ws.blueprint_needs_engine"),
+            )
+            return
+
+        language = ctx.interview_language_var.get()
+        current = [question.clean for question in parse_questions(self.question_text.toPlainText())]
+        config = ctx.config_model
+        self.design_button.setEnabled(False)
+        ctx.status_var.set(tr("ws.blueprint_generating"))
+
+        run_bg(
+            self,
+            lambda: generate_blueprint(
+                chain=chain,
+                language=language,
+                interview_type=config.interview_type,
+                role=config.target_role,
+                seniority=config.target_seniority,
+                job_description=config.job_description,
+                resume_summary=config.resume_summary,
+                question_count=max(5, min(len(current) or 8, 12)),
+                fallback_questions=current,
+                effort=ctx.ai_effort(),
+            ),
+            on_done=self._on_question_plan_ready,
+            on_error=self._on_question_plan_error,
+            name="question-plan",
+        )
+
+    def _on_question_plan_ready(self, blueprint) -> None:
+        self.design_button.setEnabled(True)
+        if blueprint.engine == "offline" or not blueprint.question_count:
+            self.ctx.status_var.set(tr("ws.blueprint_failed"))
+            return
+        self._pending_blueprint = blueprint
+        self.replace_question_text(
+            "\n".join(
+                f"{index}. {text}"
+                for index, text in enumerate(blueprint.question_texts(), start=1)
+            )
+        )
+        self.ctx.status_var.set(tr("ws.blueprint_done", engine=blueprint.engine))
+        if blueprint.notes:
+            self.ctx.warning_var.set(blueprint.notes)
+
+    def _on_question_plan_error(self, exc: Exception) -> None:
+        self.design_button.setEnabled(True)
+        logger.exception("Could not design a question plan.", exc_info=exc)
+        self.ctx.status_var.set(tr("ws.blueprint_failed"))
+
     def _apply_selected_question_set(self) -> None:
         language = self.ctx.interview_language_var.get()
         set_name = self.ctx.question_set_var.get()
@@ -857,6 +925,7 @@ class WorkspaceScreen(QWidget):
             language=self.ctx.interview_language_var.get(),
             role=config.target_role,
         )
+        self._attach_designed_plan(questions)
         self.ctx.provider = QwenTTSProvider(config, self.ctx.engine.session.audio_cache_dir)
         self.ctx.set_state(SessionState.READY)
         self.ctx.runtime_badge_var.set(tr("badge.session_ready"))
@@ -865,6 +934,18 @@ class WorkspaceScreen(QWidget):
         self._render_current_question()
         self.ctx.status_var.set(tr("ws.session_started"))
         self._speak_current(repeat=False)
+
+    def _attach_designed_plan(self, questions) -> None:
+        """Keep a generated plan's competency tags if the questions still match.
+
+        The user can edit the text after designing a plan; when they have, the
+        engine's own offline tagging is the honest fallback.
+        """
+        blueprint = self._pending_blueprint
+        if blueprint is None or self.ctx.engine is None:
+            return
+        if blueprint.question_texts() == tuple(question.clean for question in questions):
+            self.ctx.engine.attach_blueprint(blueprint)
 
     def _render_current_question(self) -> None:
         engine = self.ctx.engine

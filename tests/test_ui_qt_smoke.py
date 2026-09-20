@@ -350,3 +350,75 @@ def test_wizard_coach_step_is_part_of_the_flow(main_window: MainWindow) -> None:
     main_window.ctx.setup_step_index = SETUP_STEPS.index("coach")
     wizard._render_setup_step(animated=False)
     assert wizard.next_button.isEnabled()
+
+
+def test_design_plan_button_explains_itself_when_offline(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Offline there is nothing to design from, so the button must say so
+    rather than silently rewriting the pack with the pack."""
+    from ai_interviewer.ui.screens import workspace as workspace_module
+
+    workspace = main_window.show_workspace()
+    original = workspace.question_text.toPlainText()
+    shown = {}
+    monkeypatch.setattr(
+        workspace_module.messages,
+        "info",
+        lambda parent, title, body: shown.update(title=title, body=body),
+    )
+
+    workspace._design_question_plan()
+
+    assert shown, "offline users were given no explanation"
+    assert workspace.question_text.toPlainText() == original
+
+
+def test_designed_plan_is_attached_when_the_questions_still_match(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ai_interviewer.engine import InterviewEngine
+    from ai_interviewer.intelligence.blueprint import SOURCE_LLM, InterviewBlueprint, PlannedQuestion
+    from ai_interviewer.question_parser import parse_questions
+
+    workspace = main_window.show_workspace()
+    planned = InterviewBlueprint(
+        language="English",
+        interview_type="hr",
+        questions=(
+            PlannedQuestion(text="Designed one?", competency="integrity", source=SOURCE_LLM),
+            PlannedQuestion(text="Designed two?", competency="learning", source=SOURCE_LLM),
+        ),
+        focus=("integrity", "learning"),
+        engine="fake:fake-1",
+    )
+    workspace._pending_blueprint = planned
+    questions = parse_questions("Designed one?\nDesigned two?")
+    main_window.ctx.engine = InterviewEngine(
+        questions, main_window.ctx.config_model.sessions_root, language="English"
+    )
+
+    workspace._attach_designed_plan(questions)
+    assert main_window.ctx.engine.blueprint is planned
+    assert main_window.ctx.engine.competency_for(0) == "integrity"
+
+
+def test_edited_questions_fall_back_to_offline_tagging(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ai_interviewer.engine import InterviewEngine
+    from ai_interviewer.intelligence.blueprint import InterviewBlueprint, PlannedQuestion
+    from ai_interviewer.question_parser import parse_questions
+
+    workspace = main_window.show_workspace()
+    workspace._pending_blueprint = InterviewBlueprint(
+        questions=(PlannedQuestion(text="Designed one?", competency="integrity"),),
+    )
+    questions = parse_questions("Something the user typed instead?")
+    main_window.ctx.engine = InterviewEngine(
+        questions, main_window.ctx.config_model.sessions_root, language="English"
+    )
+    designed = main_window.ctx.engine.blueprint
+
+    workspace._attach_designed_plan(questions)
+    assert main_window.ctx.engine.blueprint is designed  # unchanged
