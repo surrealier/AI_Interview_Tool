@@ -26,6 +26,23 @@ from ai_interviewer.intelligence.llm.base import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_environment(monkeypatch: pytest.MonkeyPatch):
+    """Provider availability must come from the test, not the developer's shell.
+
+    Both providers fall back to environment variables when a setting is blank,
+    so a machine with OLLAMA or Claude configured would otherwise flip results.
+    """
+    for name in (
+        "AI_INTERVIEW_OLLAMA_MODEL",
+        "OLLAMA_HOST",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(anthropic_provider, "_oauth_profile_exists", lambda: False)
+
+
 # -- shared contract ---------------------------------------------------------
 
 
