@@ -9,9 +9,12 @@ from ai_interviewer.app_state import SessionState
 from ai_interviewer.config import resource_base_dir
 from ai_interviewer.i18n import tr
 from ai_interviewer.ui.context import AppContext
+from ai_interviewer.ui.dialogs import messages
 from ai_interviewer.ui.dialogs.model_download import ModelDownloadDialog
+from ai_interviewer.ui.screens.report import ReportScreen
 from ai_interviewer.ui.screens.wizard import WizardScreen
 from ai_interviewer.ui.screens.workspace import WorkspaceScreen
+from ai_interviewer.ui.workers import run_bg
 
 
 logger = logging.getLogger(__name__)
@@ -39,7 +42,9 @@ class MainWindow(QMainWindow):
 
         self.wizard_screen: WizardScreen | None = WizardScreen(ctx, self)
         self.workspace_screen: WorkspaceScreen | None = None
+        self.report_screen: ReportScreen | None = None
         self.stack.addWidget(self.wizard_screen)
+        self._report_running = False
 
         ctx.languageRebuildRequested.connect(self._rebuild_current_view)
 
@@ -64,6 +69,58 @@ class MainWindow(QMainWindow):
             return ""
         return self.workspace_screen.question_text_content()
 
+    # -- report ---------------------------------------------------------------
+
+    def show_report(self) -> ReportScreen:
+        if self.report_screen is None:
+            self.report_screen = ReportScreen(self.ctx, self)
+            self.stack.addWidget(self.report_screen)
+        self.stack.setCurrentWidget(self.report_screen)
+        return self.report_screen
+
+    def generate_report(self, force: bool = False) -> None:
+        """Build the session report off the UI thread, then show it.
+
+        `force` only matters for the rebuild button; a report is cheap to
+        recompute offline and the cloud path is the user's explicit choice.
+        """
+        engine = self.ctx.engine
+        if engine is None:
+            messages.warning(self.ctx.window, tr("report.title"), tr("app.no_session"))
+            return
+        if self._report_running:
+            return
+
+        if self.workspace_screen is not None:
+            self.workspace_screen.save_current_memo()
+        self.ctx.apply_config_from_ui()
+
+        screen = self.show_report()
+        screen.set_loading()
+        self._report_running = True
+        chain = self.ctx.ai_chain()
+        effort = self.ctx.ai_effort()
+
+        run_bg(
+            self,
+            lambda: engine.build_report(chain=chain, effort=effort),
+            on_done=self._on_report_ready,
+            on_error=self._on_report_error,
+            name="session-report",
+        )
+
+    def _on_report_ready(self, report) -> None:
+        self._report_running = False
+        if self.report_screen is not None:
+            self.report_screen.show_report(report)
+        self.ctx.status_var.set(tr("report.title"))
+
+    def _on_report_error(self, exc: Exception) -> None:
+        self._report_running = False
+        logger.exception("Could not build the session report.", exc_info=exc)
+        if self.report_screen is not None:
+            self.report_screen.set_failed(str(exc))
+
     # -- downloads -----------------------------------------------------------
 
     def open_model_download(self, model_id: str, on_complete=None) -> None:
@@ -82,6 +139,9 @@ class MainWindow(QMainWindow):
     def _rebuild_current_view(self) -> None:
         """Rebuild the visible screen so tr() strings pick up the new language."""
         current = self.stack.currentWidget()
+        if self.report_screen is not None and current is self.report_screen:
+            self._rebuild_report()
+            return
         if self.workspace_screen is None or current is self.wizard_screen:
             self._rebuild_wizard()
             return
@@ -105,6 +165,21 @@ class MainWindow(QMainWindow):
         if old is not None:
             self.stack.removeWidget(old)
             old.deleteLater()
+
+    def _rebuild_report(self) -> None:
+        """Re-render the report in the new UI language from the saved payload."""
+        from ai_interviewer.intelligence import SessionReport
+
+        old = self.report_screen
+        self.report_screen = ReportScreen(self.ctx, self)
+        self.stack.addWidget(self.report_screen)
+        self.stack.setCurrentWidget(self.report_screen)
+        if old is not None:
+            self.stack.removeWidget(old)
+            old.deleteLater()
+        stored = self.ctx.engine.session.report if self.ctx.engine is not None else None
+        if stored:
+            self.report_screen.show_report(SessionReport.from_dict(stored))
 
     def _rebuild_workspace(self) -> None:
         old = self.workspace_screen

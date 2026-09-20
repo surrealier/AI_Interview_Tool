@@ -1,0 +1,9 @@
+# Optional: cloud analysis with Claude. Install only if you want the
+# highest-quality scoring, probing, and report narrative; the app is fully
+# functional without it (offline rule engine, or a local Ollama model).
+#
+#   python -m pip install -r requirements-cloud.txt
+#
+# Credentials come from ANTHROPIC_API_KEY (preferred) or the in-app key store;
+# see PRIVACY.md for what is sent.
+anthropic>=1.0,<2

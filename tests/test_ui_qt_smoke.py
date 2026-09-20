@@ -187,3 +187,166 @@ def test_run_bg_owner_destroy_drops_callback(qtbot, main_window: MainWindow) -> 
     owner.deleteLater()
     qtbot.wait(200)
     assert called in ([], [42])  # either dropped or delivered before deletion
+
+
+# -- coach panel + report screen -------------------------------------------------
+
+
+def _synchronous_run_bg(owner, work, on_done=None, on_error=None, name=None):
+    try:
+        result = work()
+    except Exception as exc:  # noqa: BLE001 - mirrors the real error path
+        if on_error is not None:
+            on_error(exc)
+        return
+    if on_done is not None:
+        on_done(result)
+
+
+def _started_workspace(main_window: MainWindow, monkeypatch: pytest.MonkeyPatch):
+    """Bring up a workspace with a live engine, without TTS or diagnostics."""
+    from ai_interviewer.engine import InterviewEngine
+    from ai_interviewer.question_parser import parse_questions
+    from ai_interviewer.ui.screens import workspace as workspace_module
+
+    monkeypatch.setattr(workspace_module, "run_bg", _synchronous_run_bg)
+    workspace = main_window.show_workspace()
+    ctx = main_window.ctx
+    ctx.engine = InterviewEngine(
+        parse_questions("1. Tell me about a project.\n2. Describe a conflict.\n3. Any questions?"),
+        ctx.config_model.sessions_root,
+        interview_type="hr",
+        language="English",
+        role="Backend Engineer",
+    )
+    workspace._set_session_controls(True)
+    workspace._render_current_question()
+    return workspace
+
+
+ANSWER = (
+    "Last year our deploy pipeline failed most weeks. I collected 40 failures, grouped the "
+    "causes, and because reproducibility mattered more than coverage I built a release "
+    "checklist instead of full automation. Rollbacks went from 3 a month to 0."
+)
+
+
+def test_coach_panel_starts_idle_and_scores_an_answer(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = _started_workspace(main_window, monkeypatch)
+    assert workspace.coach_panel is not None
+    assert workspace.probe_button.isEnabled() is False
+
+    workspace.transcript_text.setPlainText(ANSWER)
+    workspace._evaluate_answer()
+
+    ctx = main_window.ctx
+    assert ctx.last_score_var.get().isdigit()
+    assert int(ctx.last_score_var.get()) > 0
+    record = ctx.engine.session.records[0]
+    assert record.evaluation is not None
+    assert record.delivery is not None
+    assert ctx.coverage_var.get() != "0 / 0"
+
+
+def test_evaluating_an_empty_answer_does_not_write_a_score(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = _started_workspace(main_window, monkeypatch)
+    workspace.transcript_text.setPlainText("   ")
+    workspace._evaluate_answer()
+    assert main_window.ctx.engine.session.records[0].evaluation is None
+    assert main_window.ctx.last_score_var.get() == "—"
+
+
+def test_navigating_back_restores_the_saved_verdict(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = _started_workspace(main_window, monkeypatch)
+    workspace.transcript_text.setPlainText(ANSWER)
+    workspace._evaluate_answer()
+    scored = main_window.ctx.last_score_var.get()
+
+    workspace._next_question()
+    assert main_window.ctx.last_score_var.get() == "—"
+
+    workspace._previous_question()
+    assert main_window.ctx.last_score_var.get() == scored
+
+
+def test_report_screen_renders_a_scored_session(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ai_interviewer.ui import main_window as main_window_module
+
+    workspace = _started_workspace(main_window, monkeypatch)
+    workspace.transcript_text.setPlainText(ANSWER)
+    workspace._evaluate_answer()
+
+    monkeypatch.setattr(main_window_module, "run_bg", _synchronous_run_bg)
+    main_window.generate_report()
+
+    assert main_window.stack.currentWidget() is main_window.report_screen
+    report = main_window.report_screen._report
+    assert report is not None
+    assert report.answered_count == 1
+    assert report.overall > 0
+    assert main_window.ctx.engine.session.report is not None
+
+
+def test_report_screen_handles_a_session_with_no_scores(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ai_interviewer.ui import main_window as main_window_module
+
+    _started_workspace(main_window, monkeypatch)
+    monkeypatch.setattr(main_window_module, "run_bg", _synchronous_run_bg)
+    main_window.generate_report()
+
+    assert main_window.report_screen._report is not None
+    assert main_window.report_screen._report.has_data is False
+
+
+def test_report_back_button_returns_to_the_workspace(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ai_interviewer.ui import main_window as main_window_module
+
+    _started_workspace(main_window, monkeypatch)
+    monkeypatch.setattr(main_window_module, "run_bg", _synchronous_run_bg)
+    main_window.generate_report()
+    main_window.report_screen._go_back()
+    assert main_window.stack.currentWidget() is main_window.workspace_screen
+
+
+def test_cloud_analysis_requires_consent_before_it_is_selected(
+    main_window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ai_interviewer.config import AI_PROVIDER_CLAUDE, AI_PROVIDER_OFFLINE
+    from ai_interviewer.ui.screens import workspace as workspace_module
+
+    workspace = main_window.show_workspace()
+    monkeypatch.setattr(workspace_module.messages, "ask_yes_no", lambda *args, **kwargs: False)
+    index = workspace.ai_provider_combo.findData(AI_PROVIDER_CLAUDE)
+    workspace._on_ai_provider_selected(index)
+
+    ctx = main_window.ctx
+    assert ctx.ai_provider_var.get() == AI_PROVIDER_OFFLINE
+    assert ctx.config_model.enable_cloud_ai is False
+    assert ctx.config_model.analysis_is_local_only() is True
+
+    monkeypatch.setattr(workspace_module.messages, "ask_yes_no", lambda *args, **kwargs: True)
+    workspace._on_ai_provider_selected(index)
+    assert ctx.ai_provider_var.get() == AI_PROVIDER_CLAUDE
+    assert ctx.config_model.enable_cloud_ai is True
+
+
+def test_wizard_coach_step_is_part_of_the_flow(main_window: MainWindow) -> None:
+    from ai_interviewer.ui.screens.wizard import SETUP_STEPS
+
+    assert "coach" in SETUP_STEPS
+    wizard = main_window.wizard_screen
+    main_window.ctx.setup_step_index = SETUP_STEPS.index("coach")
+    wizard._render_setup_step(animated=False)
+    assert wizard.next_button.isEnabled()

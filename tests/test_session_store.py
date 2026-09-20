@@ -28,7 +28,7 @@ def test_session_saves_csv_and_json(tmp_path) -> None:
     assert csv_path.exists()
 
     payload = json.loads(json_path.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["session_id"] == session.session_id
     assert payload["records"][0]["memo"] == "메모"
     assert payload["records"][0]["tts_backend"] == "windows-sapi"

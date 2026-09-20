@@ -1,6 +1,61 @@
 # Release Notes
 
-## v1.0.0-rc1 (in preparation)
+## v1.1.0-rc1 (in preparation)
+
+The interview stops being a question reader and starts being an assessment.
+
+### Added
+
+- **Competency rubric.** Every answer is scored 0-100 on six weighted
+  dimensions (structure, evidence, impact, reasoning, relevance, delivery) and
+  attributed to one of eight competencies, banded outstanding → insufficient.
+  Interview type decides which competencies the headline score weights.
+- **Answer coach.** A live panel scores the answer just given: dimension
+  meters, the specific gaps it left open (no situation, no metric, unclear
+  contribution, …), what worked, what to fix, and a model-answer outline.
+- **Adaptive follow-ups.** The app decides *whether* a follow-up is earned and
+  aims it at the most important omission, with a configurable depth cap. A
+  strong answer with no gaps ends the thread instead of being padded.
+- **Delivery analytics, measured locally.** Pace (per language), filler rate,
+  hedging, sentence length, and numeric evidence, computed from the transcript
+  and the recorded duration — never guessed by a model.
+- **Interview blueprint.** Questions are tagged with the competency they
+  measure and the stage they belong to (opening / core / deep dive / closing),
+  which drives live coverage tracking. With a provider configured, a
+  role-specific plan can be authored from a job description.
+- **Session report.** A new report screen with an overall dial, a competency
+  radar, per-dimension meters, delivery summary, strengths, focus areas, and a
+  practice plan — exportable as Markdown, a standalone HTML page, or JSON into
+  the session folder.
+- **Pluggable analysis engine.** Offline rule engine (default, no network, no
+  model), a local Ollama model, or Claude. Everything works offline; a provider
+  only improves the same outputs.
+- **Cloud analysis is opt-in and gated.** A consent dialog states exactly what
+  is sent (question and transcript text, never audio). A `config.json` edited
+  by hand cannot enable it. API keys live in their own file, never in
+  `config.json`.
+
+### Changed
+
+- Session schema is now version 3: per-answer evaluation, delivery metrics and
+  probe chains, plus the session blueprint and report. The CSV export gained
+  flat analysis columns (`competency`, `answer_score`, `words_per_minute`, …)
+  and stays spreadsheet-friendly; older sessions still load.
+- `generate_follow_up_question` now delegates to the probing engine, so the
+  offline follow-up is chosen by what the answer is missing rather than by
+  keyword match. Same signature, better question.
+- Runtime diagnostics report the analysis chain that will actually run, with
+  the reason any engine was skipped.
+- The setup wizard has an analysis-engine step, and takes cloud consent there
+  rather than silently at the first scored answer.
+
+### Fixed
+
+- Korean measurement detection no longer fires on ordinary words: units are
+  only counted next to a figure, so 분류 / 초기 / 건강 / 명확 stopped being read
+  as "numeric evidence".
+
+## v1.0.0-rc1
 
 Quality hardening toward the first commercial release.
 

@@ -21,6 +21,26 @@ LEGACY_TTS_BACKEND_VALUES = {"Windows 기본 음성": WINDOWS_SAPI_BACKEND}
 SUPPORTED_MODEL_IDS = (DEFAULT_MODEL_ID, LARGE_MODEL_ID)
 SUPPORTED_TTS_BACKENDS = (QWEN_BACKEND, WINDOWS_SAPI_BACKEND)
 
+# Analysis providers. Mirrors intelligence.llm.registry.AI_PROVIDERS, kept
+# literal here so importing the config never pulls the analysis stack in;
+# tests/test_intelligence_config.py fails if the two ever drift apart.
+AI_PROVIDER_OFFLINE = "Offline"
+AI_PROVIDER_AUTO = "Auto"
+AI_PROVIDER_OLLAMA = "Ollama"
+AI_PROVIDER_CLAUDE = "Claude"
+SUPPORTED_AI_PROVIDERS = (
+    AI_PROVIDER_OFFLINE,
+    AI_PROVIDER_AUTO,
+    AI_PROVIDER_OLLAMA,
+    AI_PROVIDER_CLAUDE,
+)
+CLOUD_AI_PROVIDERS = (AI_PROVIDER_CLAUDE,)
+
+DEFAULT_CLAUDE_MODEL = "claude-opus-5"
+SUPPORTED_AI_EFFORTS = ("low", "medium", "high")
+SUPPORTED_SENIORITY_LEVELS = ("junior", "mid", "senior", "lead")
+MAX_PROBE_DEPTH = 4
+
 
 def application_base_dir() -> Path:
     """Folder next to the EXE (frozen) or the project root: external files
@@ -83,6 +103,14 @@ class ModelNotInstalledError(RuntimeError):
         self.local_dir = local_dir
 
 
+def normalize_ai_provider(value: Any) -> str:
+    candidate = str(value or "").strip()
+    for name in SUPPORTED_AI_PROVIDERS:
+        if candidate.lower() == name.lower():
+            return name
+    return AI_PROVIDER_OFFLINE
+
+
 def is_model_installed(model_root: Path, model_id: str) -> bool:
     model_dir = Path(model_root) / model_dir_name(model_id)
     if (model_dir / MODEL_INSTALL_MARKER).exists():
@@ -122,6 +150,22 @@ class AppConfig:
     followup_provider: str = "Auto"
     ollama_model: str = ""
     ollama_host: str = "http://127.0.0.1:11434"
+    # -- interview intelligence -------------------------------------------
+    # Offline by default: scoring, probing, and reports all work with no
+    # network and no model. A cloud provider is opt-in per install.
+    ai_provider: str = AI_PROVIDER_OFFLINE
+    claude_model: str = DEFAULT_CLAUDE_MODEL
+    ai_effort: str = "medium"
+    enable_cloud_ai: bool = False
+    enable_live_scoring: bool = True
+    enable_adaptive_probing: bool = True
+    auto_speak_probe: bool = False
+    max_probe_depth: int = 2
+    target_role: str = ""
+    target_seniority: str = "mid"
+    job_description: str = ""
+    resume_summary: str = ""
+    use_generated_blueprint: bool = False
     # "system" | "light" | "dark". Replaces the legacy `ui_theme` key, whose
     # only ever-written value ("light") described a dark palette; old configs
     # simply fall back to the default here.
@@ -190,7 +234,36 @@ class AppConfig:
         config.tts_backend = LEGACY_TTS_BACKEND_VALUES.get(config.tts_backend, config.tts_backend)
         if config.ui_theme_mode not in {"system", "light", "dark"}:
             config.ui_theme_mode = "system"
+        config.normalize_ai_settings(payload)
         return config
+
+    def normalize_ai_settings(self, payload: dict[str, Any] | None = None) -> None:
+        """Clamp the analysis settings and carry the pre-1.1 config forward."""
+        source = payload or {}
+        if "ai_provider" not in source and source.get("followup_provider") == AI_PROVIDER_OLLAMA:
+            # Before the analysis layer existed, this was the only local-model
+            # switch a user could have flipped; honour it.
+            self.ai_provider = AI_PROVIDER_OLLAMA
+        self.ai_provider = normalize_ai_provider(self.ai_provider)
+        if self.ai_provider in CLOUD_AI_PROVIDERS and not self.enable_cloud_ai:
+            # A cloud provider without consent falls back rather than failing
+            # every call; the setup step is what turns it on.
+            self.ai_provider = AI_PROVIDER_OFFLINE
+        if not str(self.claude_model or "").strip():
+            self.claude_model = DEFAULT_CLAUDE_MODEL
+        if self.ai_effort not in SUPPORTED_AI_EFFORTS:
+            self.ai_effort = "medium"
+        if self.target_seniority not in SUPPORTED_SENIORITY_LEVELS:
+            self.target_seniority = "mid"
+        try:
+            depth = int(self.max_probe_depth)
+        except (TypeError, ValueError):
+            depth = 2
+        self.max_probe_depth = max(0, min(depth, MAX_PROBE_DEPTH))
+
+    def analysis_is_local_only(self) -> bool:
+        """True when nothing in the analysis path can send data off the machine."""
+        return not (self.enable_cloud_ai and self.ai_provider in {AI_PROVIDER_AUTO, AI_PROVIDER_CLAUDE})
 
     def save(self, path: Path | None = None) -> None:
         target = Path(path) if path is not None else self.config_path

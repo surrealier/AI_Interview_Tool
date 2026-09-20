@@ -119,3 +119,23 @@ To remove local user data in both cases, also delete:
 %USERPROFILE%\Documents\AIInterview\
 %APPDATA%\AIInterview\
 ```
+
+## Optional: Claude analysis engine
+
+The app scores answers, generates follow-ups, and writes reports offline by
+default. To use Claude for that instead, install the optional dependency and
+provide a key:
+
+```powershell
+python -m pip install -r requirements-cloud.txt
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+```
+
+Then pick **Claude** in the setup wizard's analysis-engine step, or under
+설정 → AI 코치. The app asks for consent before the first call and states what is
+sent (question and transcript text; never audio). A key can also be saved in the
+app, which writes it to `%APPDATA%\AIInterview\credentials.json`. See
+`PRIVACY.md`.
+
+A local **Ollama** model needs no extra package: pull a model, then set its name
+under 설정 → AI 코치.

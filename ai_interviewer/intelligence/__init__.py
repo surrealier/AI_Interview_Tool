@@ -1,0 +1,138 @@
+"""Interview intelligence: rubric, scoring, adaptive probing, and reporting.
+
+Pure Python and toolkit-free by design (tests/test_no_qt_in_core.py enforces
+it), so the same engine runs behind the desktop UI, a test, or a script. Every
+analyzer has an offline implementation, and a configured LLM provider only ever
+improves on it — the app never depends on one being present.
+"""
+
+from ai_interviewer.intelligence.blueprint import (
+    InterviewBlueprint,
+    PlannedQuestion,
+    build_blueprint,
+    generate_blueprint,
+    tag_competency,
+    tag_stage,
+)
+from ai_interviewer.intelligence.delivery import DeliveryMetrics, analyze_delivery
+from ai_interviewer.intelligence.evaluation import (
+    AnswerEvaluation,
+    AnswerSignals,
+    DimensionScore,
+    analyze_answer,
+    detect_gaps,
+    evaluate_answer,
+)
+from ai_interviewer.intelligence.llm import (
+    AI_AUTO,
+    AI_CLAUDE,
+    AI_OFFLINE,
+    AI_OLLAMA,
+    AI_PROVIDERS,
+    DEFAULT_AI_PROVIDER,
+    AISettings,
+    ProviderChain,
+    build_chain,
+    chain_for_config,
+    normalize_provider,
+    provider_statuses,
+)
+from ai_interviewer.intelligence.pipeline import (
+    AnswerInsight,
+    analyze_answer_turn,
+    build_session_report,
+    engine_label,
+    insight_from_record,
+    report_items,
+)
+from ai_interviewer.intelligence.probing import (
+    DEFAULT_MAX_DEPTH,
+    Probe,
+    ProbeDecision,
+    decide_probe,
+    follow_up_for_answer,
+    generate_probe,
+)
+from ai_interviewer.intelligence.report import (
+    CompetencyScore,
+    ReportItem,
+    SessionReport,
+    build_report,
+    render_html,
+    render_json,
+    render_markdown,
+)
+from ai_interviewer.intelligence.rubric import (
+    BANDS,
+    COMPETENCIES,
+    COMPETENCY_KEYS,
+    DIMENSION_KEYS,
+    DIMENSIONS,
+    band_key_for_score,
+    band_label,
+    competencies_for_interview_type,
+    competency,
+    competency_label,
+    dimension_label,
+    weighted_overall,
+)
+
+__all__ = [
+    "AISettings",
+    "AI_AUTO",
+    "AI_CLAUDE",
+    "AI_OFFLINE",
+    "AI_OLLAMA",
+    "AI_PROVIDERS",
+    "AnswerEvaluation",
+    "AnswerInsight",
+    "AnswerSignals",
+    "BANDS",
+    "COMPETENCIES",
+    "COMPETENCY_KEYS",
+    "CompetencyScore",
+    "DEFAULT_AI_PROVIDER",
+    "DEFAULT_MAX_DEPTH",
+    "DIMENSIONS",
+    "DIMENSION_KEYS",
+    "DeliveryMetrics",
+    "DimensionScore",
+    "InterviewBlueprint",
+    "PlannedQuestion",
+    "Probe",
+    "ProbeDecision",
+    "ProviderChain",
+    "ReportItem",
+    "SessionReport",
+    "analyze_answer",
+    "analyze_answer_turn",
+    "analyze_delivery",
+    "band_key_for_score",
+    "band_label",
+    "build_blueprint",
+    "build_chain",
+    "build_report",
+    "build_session_report",
+    "chain_for_config",
+    "competencies_for_interview_type",
+    "competency",
+    "competency_label",
+    "decide_probe",
+    "detect_gaps",
+    "dimension_label",
+    "engine_label",
+    "evaluate_answer",
+    "follow_up_for_answer",
+    "generate_blueprint",
+    "generate_probe",
+    "insight_from_record",
+    "normalize_provider",
+    "provider_statuses",
+    "render_html",
+    "render_json",
+    "render_markdown",
+    "report_items",
+    "tag_competency",
+    "tag_stage",
+    "weighted_overall",
+]

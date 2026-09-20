@@ -1,23 +1,44 @@
 # AI Interviewer
 
-AI Interviewer is an offline-first Windows desktop app for interview practice.
-Paste or load a question list, let the app read each question aloud, record and
-transcribe answers, generate follow-up questions, and export session records to
-CSV/JSON. The UI supports Korean and English (switchable in-app).
+AI Interviewer is an offline-first Windows desktop app that runs a practice
+interview and then tells you how it went. It reads each question aloud, records
+and transcribes the answer, scores it against a competency rubric, asks the
+follow-up the answer actually earned, and produces a session report you can
+export. The UI supports Korean and English (switchable in-app).
 
-Current release target: `v1.0.0-rc1` (version source of truth:
+Everything works with no network and no language model. A local Ollama model or
+Claude can be turned on to sharpen the same outputs — see
+[Analysis Engine](#analysis-engine).
+
+Current release target: `v1.1.0-rc1` (version source of truth:
 `ai_interviewer/__init__.py`).
+
+## What It Does
+
+1. **Plans.** Questions are tagged with the competency they measure and the
+   stage they belong to, so coverage is visible while the interview runs.
+2. **Interviews.** Qwen3-TTS speaks each question; the answer is recorded and
+   transcribed locally with faster-whisper.
+3. **Scores.** Each answer gets a 0-100 rubric score across six dimensions,
+   plus the specific gaps it left open.
+4. **Probes.** When an answer omits something that matters, the app asks about
+   that — bounded by a depth cap, and silent when the answer was strong.
+5. **Reports.** An overall band, a competency radar, delivery analytics, and a
+   practice plan, exportable as Markdown, HTML, or JSON.
+
+See `docs/interview-intelligence.md` for the architecture.
 
 ## Beta Scope
 
 - Windows 10/11 single-user desktop app.
 - Korean and English default HR question set.
-- Step-by-step setup wizard for language, TTS model, speaker, interview type, question source, sound test, and preferences.
+- Step-by-step setup wizard for language, TTS model, speaker, interview type, analysis engine, question source, sound test, and preferences.
 - Question prefix cleanup such as `1.`, `1)`, `1.2.`, `Q1.`.
 - Qwen3-TTS first, Windows SAPI optional fallback.
 - Interviewer video panel with built-in animated fallback.
-- Optional microphone recording, faster-whisper STT, and follow-up question generation.
-- Local session export with timestamps, TTS backend, quality flag, transcript, memo, answer audio path, and follow-up question.
+- Optional microphone recording, faster-whisper STT, and adaptive follow-up questions.
+- Rubric scoring, delivery analytics, and a session report (Markdown/HTML/JSON).
+- Local session export with timestamps, TTS backend, quality flag, transcript, memo, answer audio path, follow-up question, competency, score, and delivery metrics.
 - Runtime diagnostics and local support logs.
 
 ## Quick Start
@@ -43,6 +64,31 @@ python -m pip install -r requirements.txt
 python -m pip install -r requirements-qwen.txt
 pythonw -m ai_interviewer
 ```
+
+## Analysis Engine
+
+Scoring, follow-ups, and reports run on one of three engines, chosen in the
+setup wizard or under 설정 → AI 코치:
+
+| Engine | Network | Needs | Notes |
+| --- | --- | --- | --- |
+| **Offline** (default) | none | nothing | Rule-based, deterministic, always available. |
+| **Local Ollama** | localhost | a pulled model | Set the model name in settings or `AI_INTERVIEW_OLLAMA_MODEL`. |
+| **Claude** | Anthropic API | `requirements-cloud.txt` + a key | Opt-in with an explicit consent dialog. |
+
+```powershell
+python -m pip install -r requirements-cloud.txt   # only for the Claude engine
+$env:ANTHROPIC_API_KEY = "sk-ant-..."             # or save it in the app
+```
+
+Cloud analysis sends the question and the answer **transcript text** only;
+recordings are never uploaded. It cannot be enabled by editing `config.json` —
+the app drops a cloud provider that has no recorded consent. Keys are stored in
+`%APPDATA%\AIInterview\credentials.json`, never in `config.json`. See
+`PRIVACY.md`.
+
+Answer *delivery* (pace, filler, hedging) is always measured locally and is
+never sent to or asked of a model.
 
 ## Models
 
@@ -137,3 +183,4 @@ python -m pytest
 - `RELEASE_NOTES.md`: release notes
 - `MODEL_LICENSES.md`: model distribution policy
 - `THIRD_PARTY_NOTICES.md`: dependency notice
+- `docs/interview-intelligence.md`: rubric, scoring, probing, and provider architecture

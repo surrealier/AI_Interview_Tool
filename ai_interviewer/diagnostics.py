@@ -186,16 +186,41 @@ def _video_checks(config: AppConfig) -> list[DiagnosticItem]:
 
 
 def _followup_checks(config: AppConfig) -> list[DiagnosticItem]:
-    provider = config.followup_provider
-    if provider == "Rules":
-        return [DiagnosticItem(tr("diag.followup_provider"), STATUS_OK, tr("diag.followup_rules"), required=False)]
+    """Report what the analysis layer will actually use.
 
-    model = config.ollama_model or os.environ.get("AI_INTERVIEW_OLLAMA_MODEL", "").strip()
-    if provider == "Ollama" and not model:
-        return [DiagnosticItem(tr("diag.followup_provider"), STATUS_WARN, tr("diag.followup_no_model"), required=False)]
-    if model:
-        return [DiagnosticItem(tr("diag.followup_provider"), STATUS_OK, f"Ollama: {model}", required=False)]
-    return [DiagnosticItem(tr("diag.followup_provider"), STATUS_OK, tr("diag.followup_auto"), required=False)]
+    Nothing here is required: the offline rule engine always works, so a missing
+    local model or cloud key is a warning about capability, not a failure.
+    """
+    from ai_interviewer import credentials
+    from ai_interviewer.config import AI_PROVIDER_OFFLINE
+    from ai_interviewer.intelligence import AISettings, build_chain, provider_statuses
+
+    settings = AISettings.from_config(config, credentials.anthropic_api_key())
+    chain = build_chain(settings)
+    if not chain.enabled:
+        detail = tr("diag.followup_rules")
+        status = STATUS_OK if settings.provider == AI_PROVIDER_OFFLINE else STATUS_WARN
+        if settings.provider != AI_PROVIDER_OFFLINE:
+            reasons = "; ".join(chain.skipped) or tr("diag.followup_no_model")
+            detail = f"{tr('diag.followup_rules')} ({reasons})"
+        items = [DiagnosticItem(tr("diag.followup_provider"), status, detail, required=False)]
+    else:
+        items = [
+            DiagnosticItem(tr("diag.followup_provider"), STATUS_OK, chain.describe(), required=False)
+        ]
+
+    for status_entry in provider_statuses(settings):
+        if status_entry.name == AI_PROVIDER_OFFLINE:
+            continue
+        items.append(
+            DiagnosticItem(
+                f"{tr('diag.followup_provider')}: {status_entry.name}",
+                STATUS_OK if status_entry.available else STATUS_WARN,
+                status_entry.detail,
+                required=False,
+            )
+        )
+    return items
 
 
 def diagnostics_text(report: RuntimeDiagnosticReport) -> str:

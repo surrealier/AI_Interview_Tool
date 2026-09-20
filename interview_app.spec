@@ -19,6 +19,9 @@ for package in (
     "PIL",
     "sounddevice",
     "faster_whisper",
+    # Optional cloud analysis: bundled only when it is installed in the build
+    # environment, so an offline-only build stays lean.
+    "anthropic",
 ):
     try:
         hiddenimports += collect_submodules(package)
@@ -37,6 +40,7 @@ datas = [
     ("LICENSE", "."),
     ("docs/release-checklist.md", "docs"),
     ("docs/troubleshooting.md", "docs"),
+    ("docs/interview-intelligence.md", "docs"),
     ("assets/icon.ico", "assets"),
     ("assets/icons", "assets/icons"),
 ]

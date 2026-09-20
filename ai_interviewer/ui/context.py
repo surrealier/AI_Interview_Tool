@@ -30,6 +30,8 @@ from ai_interviewer.i18n import (
     set_language,
     tr,
 )
+from ai_interviewer import credentials
+from ai_interviewer.intelligence import AISettings, ProviderChain, build_chain
 from ai_interviewer.stt import MicrophoneRecorder, WhisperTranscriber
 from ai_interviewer.tts.qwen_provider import QwenTTSProvider
 from ai_interviewer.tts_catalog import default_speaker_for_language
@@ -115,6 +117,23 @@ class AppContext(QObject):
         self.followup_provider_var = Prop(self.config_model.followup_provider)
         self.ollama_model_var = Prop(self.config_model.ollama_model)
         self.ollama_host_var = Prop(self.config_model.ollama_host)
+        # -- analysis layer -------------------------------------------------
+        self.ai_provider_var = Prop(self.config_model.ai_provider)
+        self.claude_model_var = Prop(self.config_model.claude_model)
+        self.ai_effort_var = Prop(self.config_model.ai_effort)
+        self.cloud_ai_var = BoolProp(self.config_model.enable_cloud_ai)
+        self.live_scoring_var = BoolProp(self.config_model.enable_live_scoring)
+        self.adaptive_probing_var = BoolProp(self.config_model.enable_adaptive_probing)
+        self.auto_speak_probe_var = BoolProp(self.config_model.auto_speak_probe)
+        self.probe_depth_var = Prop(str(self.config_model.max_probe_depth))
+        self.target_role_var = Prop(self.config_model.target_role)
+        self.seniority_var = Prop(self.config_model.target_seniority)
+        self.job_description_var = Prop(self.config_model.job_description)
+        self.resume_summary_var = Prop(self.config_model.resume_summary)
+        self.coach_status_var = Prop(tr("ws.coach_idle"))
+        self.analysis_engine_var = Prop("")
+        self.last_score_var = Prop("—")
+        self.coverage_var = Prop("0 / 0")
         self.allow_fallback_var = BoolProp(self.config_model.enable_windows_sapi_fallback)
         tts_language = self.config_model.default_language
         if tts_language == "Auto":
@@ -173,10 +192,49 @@ class AppContext(QObject):
         self.config_model.ollama_host = self.ollama_host_var.get().strip() or "http://127.0.0.1:11434"
         self.config_model.enable_windows_sapi_fallback = bool(self.allow_fallback_var.get())
         self.config_model.ui_language = self.ui_language_var.get() or self.config_model.ui_language
+        self._apply_ai_config_from_ui()
         self.config_model.ensure_directories()
         self.configApplied.emit()
         if save:
             self.config_model.save()
+
+    def _apply_ai_config_from_ui(self) -> None:
+        self.config_model.ai_provider = self.ai_provider_var.get()
+        self.config_model.claude_model = self.claude_model_var.get().strip()
+        self.config_model.ai_effort = self.ai_effort_var.get()
+        self.config_model.enable_cloud_ai = bool(self.cloud_ai_var.get())
+        self.config_model.enable_live_scoring = bool(self.live_scoring_var.get())
+        self.config_model.enable_adaptive_probing = bool(self.adaptive_probing_var.get())
+        self.config_model.auto_speak_probe = bool(self.auto_speak_probe_var.get())
+        try:
+            self.config_model.max_probe_depth = int(self.probe_depth_var.get())
+        except (TypeError, ValueError):
+            pass
+        self.config_model.target_role = self.target_role_var.get().strip()
+        self.config_model.target_seniority = self.seniority_var.get()
+        self.config_model.job_description = self.job_description_var.get().strip()
+        self.config_model.resume_summary = self.resume_summary_var.get().strip()
+        # normalize_ai_settings clamps the depth and drops a cloud provider the
+        # user has not consented to, so the UI can never persist a bad combo.
+        self.config_model.normalize_ai_settings()
+        self.ai_provider_var.set(self.config_model.ai_provider)
+        self.probe_depth_var.set(str(self.config_model.max_probe_depth))
+
+    # -- analysis ------------------------------------------------------------
+
+    def ai_settings(self) -> AISettings:
+        return AISettings.from_config(self.config_model, credentials.anthropic_api_key())
+
+    def ai_chain(self) -> ProviderChain:
+        """Build the provider chain for one analysis call.
+
+        Rebuilt per call rather than cached: the user can change the engine or
+        drop in an API key between two questions.
+        """
+        return build_chain(self.ai_settings())
+
+    def ai_effort(self) -> str:
+        return self.config_model.ai_effort
 
     def selected_model_installed(self) -> bool:
         return is_model_installed(self.config_model.model_root, self.model_var.get()) and is_model_installed(

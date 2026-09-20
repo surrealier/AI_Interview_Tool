@@ -157,6 +157,64 @@ QLabel[role="choiceBody"] {{
     color: {t.muted};
 }}
 
+/* ---- scoring --------------------------------------------------------- */
+QLabel[role="score"] {{
+    font-size: {t.size_score}pt;
+    font-weight: 700;
+    color: {t.ink};
+}}
+QLabel[role="scoreUnit"] {{
+    font-size: {t.size_caption}pt;
+    color: {t.muted};
+}}
+QLabel[role="band"] {{
+    font-size: {t.size_section}pt;
+    font-weight: 700;
+    color: {t.accent};
+}}
+QLabel[role="dimLabel"] {{
+    font-size: {t.size_caption}pt;
+    color: {t.muted};
+}}
+QLabel[role="dimValue"] {{
+    font-family: {t.mono_stack};
+    font-size: {t.size_caption}pt;
+    font-weight: 700;
+    color: {t.ink};
+}}
+QLabel[role="coachNote"] {{
+    font-size: {t.size_caption}pt;
+    color: {t.ink};
+}}
+QLabel[role="chip"] {{
+    background-color: {t.chip_bg};
+    color: {t.chip_ink};
+    border: 1px solid {t.border};
+    border-radius: {t.radius_lg}px;
+    font-size: {t.size_chip}pt;
+    font-weight: 600;
+    padding: 2px {t.sp[2]}px;
+}}
+QLabel[role="chipAccent"] {{
+    background-color: {t.selection};
+    color: {t.primary};
+    border: 1px solid {t.primary};
+    border-radius: {t.radius_lg}px;
+    font-size: {t.size_chip}pt;
+    font-weight: 700;
+    padding: 2px {t.sp[2]}px;
+}}
+QFrame[variant="insight"] {{
+    background-color: {t.surface_alt};
+    border: 1px solid {t.border};
+    border-radius: {t.radius_md}px;
+}}
+QFrame[variant="scoreHero"] {{
+    background-color: {t.surface};
+    border: 1px solid {t.primary};
+    border-radius: {t.radius_lg}px;
+}}
+
 /* ---- buttons -------------------------------------------------------- */
 QPushButton {{
     background-color: {t.surface_alt};

@@ -13,13 +13,19 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QRadioButton,
     QVBoxLayout,
     QWidget,
 )
 
 from ai_interviewer import __version__
-from ai_interviewer.config import QWEN_BACKEND
+from ai_interviewer.config import (
+    AI_PROVIDER_CLAUDE,
+    AI_PROVIDER_OFFLINE,
+    AI_PROVIDER_OLLAMA,
+    QWEN_BACKEND,
+)
 from ai_interviewer.default_questions import (
     default_questions_text,
     interview_type_label,
@@ -46,6 +52,7 @@ from ai_interviewer.ui.dialogs.model_download import ModelDownloadDialog
 from ai_interviewer.ui.state import Prop, bind_label
 from ai_interviewer.ui.theme import manager as theme_manager
 from ai_interviewer.ui.widgets import cards
+from ai_interviewer.ui.widgets.binding import bind_line_edit
 from ai_interviewer.ui.widgets.buttons import IconButton, SegButton
 from ai_interviewer.ui.widgets.choice_card import ChoiceCard
 from ai_interviewer.ui.widgets.signal_widget import SignalWidget
@@ -59,11 +66,21 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SETUP_STEPS = ("language", "model", "speaker", "type", "questions", "sound", "preferences", "review")
+SETUP_STEPS = (
+    "language",
+    "model",
+    "speaker",
+    "type",
+    "coach",
+    "questions",
+    "sound",
+    "preferences",
+    "review",
+)
 
 
 class WizardScreen(QWidget):
-    """First-run / setup flow: 8 steps on a left progress rail."""
+    """First-run / setup flow: one decision per step on a left progress rail."""
 
     def __init__(self, ctx: AppContext, window: "MainWindow") -> None:
         super().__init__()
@@ -147,6 +164,7 @@ class WizardScreen(QWidget):
             tr("wizard.step.model"),
             tr("wizard.step.speaker"),
             tr("wizard.step.interview"),
+            tr("wizard.step_coach"),
             tr("wizard.step.questions"),
             tr("wizard.step.sound"),
             tr("wizard.step.options"),
@@ -479,6 +497,54 @@ class WizardScreen(QWidget):
         layout.addLayout(theme_row)
         layout.addStretch(1)
 
+    def _build_setup_coach(self, layout: QVBoxLayout) -> None:
+        """Pick the analysis engine, and take cloud consent here rather than
+        silently at the first scored answer."""
+        layout.addWidget(cards.section_header(tr("wizard.coach_title"), tr("wizard.coach_body")))
+        layout.addSpacing(18)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(12)
+        options = (
+            (AI_PROVIDER_OFFLINE, tr("wizard.coach_offline"), tr("wizard.coach_offline_body")),
+            (AI_PROVIDER_OLLAMA, tr("wizard.coach_local"), tr("wizard.coach_local_body")),
+            (AI_PROVIDER_CLAUDE, tr("wizard.coach_cloud"), tr("wizard.coach_cloud_body")),
+        )
+        for column, (value, title, description) in enumerate(options):
+            card = ChoiceCard(title, description, selected=self.ctx.ai_provider_var.get() == value)
+            card.clicked.connect(lambda v=value: self._select_coach_provider(v))
+            grid.addWidget(card, 0, column)
+        layout.addLayout(grid)
+
+        layout.addSpacing(18)
+        role_box = cards.frame("subtle")
+        role_layout = QGridLayout(role_box)
+        role_layout.setContentsMargins(16, 14, 16, 14)
+        role_layout.setHorizontalSpacing(12)
+        role_layout.setVerticalSpacing(8)
+        role_layout.setColumnStretch(1, 1)
+        role_layout.addWidget(cards.label(tr("wizard.coach_role"), "metricLabel"), 0, 0)
+        role_edit = QLineEdit()
+        bind_line_edit(role_edit, self.ctx.target_role_var)
+        role_layout.addWidget(role_edit, 0, 1)
+        role_layout.addWidget(cards.label(tr("wizard.coach_role_hint"), "muted", wrap=True), 1, 0, 1, 2)
+        layout.addWidget(role_box)
+        layout.addStretch(1)
+
+    def _select_coach_provider(self, provider: str) -> None:
+        if provider == AI_PROVIDER_CLAUDE and not self.ctx.cloud_ai_var.get():
+            if not messages.ask_yes_no(
+                self.window,
+                tr("ws.cloud_consent_title"),
+                tr("ws.cloud_consent_body"),
+            ):
+                self.ctx.status_var.set(tr("ws.cloud_declined"))
+                self._select_and_continue(self.ctx.ai_provider_var, AI_PROVIDER_OFFLINE)
+                return
+            self.ctx.cloud_ai_var.set(True)
+        self._select_and_continue(self.ctx.ai_provider_var, provider)
+
     def _build_setup_review(self, layout: QVBoxLayout) -> None:
         layout.addWidget(cards.section_header(tr("wizard.review_title"), tr("wizard.review_sub")))
         layout.addSpacing(18)
@@ -502,6 +568,10 @@ class WizardScreen(QWidget):
             (
                 tr("wizard.step.questions"),
                 tr("wizard.custom_questions") if self.ctx.question_source_var.get() == "custom" else selected_set,
+            ),
+            (
+                tr("wizard.step_coach"),
+                tr(f"ai.provider.{self.ctx.ai_provider_var.get()}"),
             ),
             (tr("wizard.step.sound"), self.ctx.sound_test_status_var.get()),
             (tr("wizard.review_stt"), tr("common.on") if self.ctx.enable_stt_var.get() else tr("common.off")),

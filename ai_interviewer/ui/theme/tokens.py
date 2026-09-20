@@ -32,6 +32,17 @@ class Tokens:
     focus_ring: str
     grid_line: str
 
+    # Score bands. One color per rubric band so a number, a meter, and a radar
+    # ring always agree; `track` is the unfilled part of any meter.
+    band_outstanding: str
+    band_strong: str
+    band_solid: str
+    band_developing: str
+    band_insufficient: str
+    track: str
+    chip_bg: str
+    chip_ink: str
+
     # Typography (point sizes; Qt scales points with DPI).
     font: str = "Segoe UI"
     mono_font: str = "Cascadia Mono"
@@ -42,6 +53,8 @@ class Tokens:
     size_caption: int = 9
     size_metric: int = 18
     size_question: int = 14
+    size_score: int = 34
+    size_chip: int = 9
 
     # Geometry
     radius_sm: int = 4
@@ -81,6 +94,14 @@ DARK = Tokens(
     video_bg="#050814",
     focus_ring="#5ea1ff",
     grid_line="#111a2b",
+    band_outstanding="#4ade80",
+    band_strong="#52dec2",
+    band_solid="#f5bd42",
+    band_developing="#fb923c",
+    band_insufficient="#ff6b6b",
+    track="#1b2740",
+    chip_bg="#16203a",
+    chip_ink="#b8c6dc",
 )
 
 LIGHT = Tokens(
@@ -105,6 +126,44 @@ LIGHT = Tokens(
     video_bg="#0b1220",
     focus_ring="#2f6bdb",
     grid_line="#dfe5ee",
+    band_outstanding="#15803d",
+    band_strong="#0d9488",
+    band_solid="#b45309",
+    band_developing="#c2410c",
+    band_insufficient="#dc2626",
+    track="#dbe2ee",
+    chip_bg="#e9eef7",
+    chip_ink="#44536b",
 )
 
 THEMES: dict[str, Tokens] = {"dark": DARK, "light": LIGHT}
+
+
+# -- band lookup -------------------------------------------------------------
+
+# Rubric band key -> token attribute. Widgets call band_color() instead of
+# branching on the key, so a new band needs one entry here and nothing else.
+_BAND_ATTRIBUTES: dict[str, str] = {
+    "outstanding": "band_outstanding",
+    "strong": "band_strong",
+    "solid": "band_solid",
+    "developing": "band_developing",
+    "insufficient": "band_insufficient",
+}
+
+
+def band_color(tokens: Tokens, band_key: str) -> str:
+    return getattr(tokens, _BAND_ATTRIBUTES.get(band_key, "band_insufficient"))
+
+
+def band_color_for_score(tokens: Tokens, score: float) -> str:
+    """Band color straight from a number, for widgets that never see the key."""
+    if score >= 85:
+        return tokens.band_outstanding
+    if score >= 70:
+        return tokens.band_strong
+    if score >= 55:
+        return tokens.band_solid
+    if score >= 40:
+        return tokens.band_developing
+    return tokens.band_insufficient

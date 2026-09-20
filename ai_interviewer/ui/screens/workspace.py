@@ -21,12 +21,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ai_interviewer import __version__
+from ai_interviewer import __version__, credentials
 from ai_interviewer.app_state import SessionState
 from ai_interviewer.config import (
+    AI_PROVIDER_CLAUDE,
+    AI_PROVIDER_OFFLINE,
     DEFAULT_MODEL_ID,
     LARGE_MODEL_ID,
+    MAX_PROBE_DEPTH,
     QWEN_BACKEND,
+    SUPPORTED_AI_EFFORTS,
+    SUPPORTED_AI_PROVIDERS,
+    SUPPORTED_SENIORITY_LEVELS,
     SUPPORTED_TTS_BACKENDS,
 )
 from ai_interviewer.default_questions import (
@@ -36,8 +42,14 @@ from ai_interviewer.default_questions import (
 )
 from ai_interviewer.diagnostics import collect_runtime_diagnostics, diagnostics_text
 from ai_interviewer.engine import InterviewEngine
-from ai_interviewer.followup import generate_follow_up_question
 from ai_interviewer.i18n import SUPPORTED_UI_LANGUAGES, tr, ui_language_label
+from ai_interviewer.intelligence import (
+    AnswerInsight,
+    analyze_answer_turn,
+    follow_up_for_answer,
+    insight_from_record,
+    provider_statuses,
+)
 from ai_interviewer.question_parser import detect_language, parse_questions
 from ai_interviewer.stt import STTError, input_device_id_from_label, list_input_devices
 from ai_interviewer.tts.qwen_provider import QwenTTSProvider
@@ -52,6 +64,7 @@ from ai_interviewer.ui.dialogs.session_browser import SessionBrowserDialog
 from ai_interviewer.ui.widgets import cards
 from ai_interviewer.ui.widgets.binding import bind_checkbox, bind_combo, bind_line_edit
 from ai_interviewer.ui.widgets.buttons import IconButton
+from ai_interviewer.ui.widgets.coach_panel import CoachPanel
 from ai_interviewer.ui.widgets.signal_widget import SignalWidget
 from ai_interviewer.ui.widgets.text_edit import make_text_edit, set_text_content
 from ai_interviewer.ui.widgets.video_widget import InterviewerVideoWidget
@@ -71,6 +84,7 @@ class WorkspaceScreen(QWidget):
         super().__init__()
         self.ctx = ctx
         self.window = window
+        self._evaluating = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(18, 16, 18, 16)
@@ -223,6 +237,8 @@ class WorkspaceScreen(QWidget):
         metrics.addWidget(cards.metric_tile(tr("ws.metric_progress"), self.ctx.progress_var), 1)
         metrics.addWidget(cards.metric_tile(tr("ws.metric_answer"), self.ctx.answer_timer_var), 1)
         metrics.addWidget(cards.metric_tile(tr("ws.metric_total"), self.ctx.total_timer_var), 1)
+        metrics.addWidget(cards.metric_tile(tr("ws.metric_score"), self.ctx.last_score_var), 1)
+        metrics.addWidget(cards.metric_tile(tr("ws.metric_coverage"), self.ctx.coverage_var), 1)
         layout.addSpacing(12)
         layout.addLayout(metrics)
 
@@ -249,6 +265,9 @@ class WorkspaceScreen(QWidget):
         self.stop_button = IconButton(tr("ws.btn_stop_tts"), icon_name="square", kind="tool")
         self.record_button = IconButton(tr("ws.btn_record"), icon_name="mic", kind="secondary")
         self.stop_record_button = IconButton(tr("ws.btn_stop_stt"), icon_name="mic-off", kind="tool")
+        self.evaluate_button = IconButton(tr("ws.btn_evaluate"), icon_name="activity", kind="primary")
+        self.probe_button = IconButton(tr("ws.btn_ask_probe"), icon_name="message-circle-question", kind="secondary")
+        self.report_button = IconButton(tr("ws.btn_report"), icon_name="file-text", kind="secondary")
         self.followup_button = IconButton(tr("ws.btn_followup"), icon_name="sparkles", kind="secondary")
         self.followup_speak_button = IconButton(tr("ws.btn_read_followup"), icon_name="volume-2", kind="tool")
         self.restart_button = IconButton(tr("ws.btn_restart"), icon_name="refresh-cw", kind="tool")
@@ -263,6 +282,9 @@ class WorkspaceScreen(QWidget):
         self.stop_button.clicked.connect(self._stop_tts)
         self.record_button.clicked.connect(self._start_recording)
         self.stop_record_button.clicked.connect(self._stop_recording_and_transcribe)
+        self.evaluate_button.clicked.connect(self._evaluate_answer)
+        self.probe_button.clicked.connect(self._ask_probe)
+        self.report_button.clicked.connect(self._open_report)
         self.followup_button.clicked.connect(self._generate_follow_up)
         self.followup_speak_button.clicked.connect(self._speak_follow_up)
         self.restart_button.clicked.connect(self._restart_session)
@@ -278,8 +300,11 @@ class WorkspaceScreen(QWidget):
             self.stop_button,
             self.record_button,
             self.stop_record_button,
+            self.evaluate_button,
+            self.probe_button,
             self.followup_button,
             self.followup_speak_button,
+            self.report_button,
             self.restart_button,
             self.open_folder_button,
             self.sound_test_button,
@@ -326,15 +351,17 @@ class WorkspaceScreen(QWidget):
         workspace_layout.setContentsMargins(14, 14, 14, 14)
         workspace_layout.setSpacing(10)
         workspace_layout.addWidget(cards.section_header(tr("ws.workspace_title"), tr("ws.workspace_sub")))
-        detail_tabs = QTabWidget()
-        detail_tabs.setDocumentMode(True)
+        self.detail_tabs = QTabWidget()
+        self.detail_tabs.setDocumentMode(True)
         self.memo_text = make_text_edit(min_lines=6)
         self.transcript_text = make_text_edit(min_lines=6)
         self.followup_text = make_text_edit(min_lines=6)
-        detail_tabs.addTab(self.memo_text, tr("ws.tab_memo"))
-        detail_tabs.addTab(self.transcript_text, tr("ws.tab_stt"))
-        detail_tabs.addTab(self.followup_text, tr("ws.tab_followup"))
-        workspace_layout.addWidget(detail_tabs, 1)
+        self.coach_panel = CoachPanel()
+        self.coach_tab_index = self.detail_tabs.addTab(self.coach_panel, tr("ws.tab_coach"))
+        self.detail_tabs.addTab(self.transcript_text, tr("ws.tab_stt"))
+        self.detail_tabs.addTab(self.memo_text, tr("ws.tab_memo"))
+        self.detail_tabs.addTab(self.followup_text, tr("ws.tab_followup"))
+        workspace_layout.addWidget(self.detail_tabs, 1)
 
     def _build_settings_tabs(self, parent_layout: QVBoxLayout) -> None:
         tabs = QTabWidget()
@@ -420,22 +447,103 @@ class WorkspaceScreen(QWidget):
         ai.setVerticalSpacing(8)
         ai.setColumnStretch(1, 1)
 
-        ai.addWidget(cards.label(tr("ws.set_followup"), "section"), 0, 0)
-        followup_combo = QComboBox()
-        followup_combo.addItems(("Auto", "Ollama", "Rules"))
-        bind_combo(followup_combo, self.ctx.followup_provider_var)
-        ai.addWidget(followup_combo, 0, 1)
+        ai.addWidget(cards.label(tr("ws.set_ai_provider"), "section"), 0, 0)
+        self.ai_provider_combo = QComboBox()
+        for provider in SUPPORTED_AI_PROVIDERS:
+            self.ai_provider_combo.addItem(tr(f"ai.provider.{provider}"), provider)
+        self.ai_provider_combo.setCurrentIndex(
+            max(0, self.ai_provider_combo.findData(self.ctx.ai_provider_var.get()))
+        )
+        self.ai_provider_combo.activated.connect(self._on_ai_provider_selected)
+        ai.addWidget(self.ai_provider_combo, 0, 1)
+        effort_combo = QComboBox()
+        for effort in SUPPORTED_AI_EFFORTS:
+            effort_combo.addItem(tr(f"ai.effort.{effort}"), effort)
+        effort_combo.setCurrentIndex(max(0, effort_combo.findData(self.ctx.ai_effort_var.get())))
+        effort_combo.activated.connect(
+            lambda index: self.ctx.ai_effort_var.set(effort_combo.itemData(index))
+        )
+        ai.addWidget(effort_combo, 0, 2)
 
-        ai.addWidget(cards.label(tr("ws.set_ollama_model"), "section"), 1, 0)
+        ai.addWidget(cards.label(tr("ws.provider_status"), "section"), 1, 0)
+        self.provider_status_label = cards.label("", "muted", wrap=True)
+        ai.addWidget(self.provider_status_label, 1, 1, 1, 3)
+
+        scoring_check = QCheckBox(tr("ws.set_live_scoring"))
+        bind_checkbox(scoring_check, self.ctx.live_scoring_var)
+        ai.addWidget(scoring_check, 2, 1)
+        probing_check = QCheckBox(tr("ws.set_adaptive_probing"))
+        bind_checkbox(probing_check, self.ctx.adaptive_probing_var)
+        ai.addWidget(probing_check, 2, 2)
+        auto_speak_check = QCheckBox(tr("ws.set_auto_speak_probe"))
+        bind_checkbox(auto_speak_check, self.ctx.auto_speak_probe_var)
+        ai.addWidget(auto_speak_check, 2, 3)
+
+        ai.addWidget(cards.label(tr("ws.set_probe_depth"), "section"), 3, 0)
+        depth_combo = QComboBox()
+        depth_combo.addItems([str(value) for value in range(MAX_PROBE_DEPTH + 1)])
+        bind_combo(depth_combo, self.ctx.probe_depth_var)
+        ai.addWidget(depth_combo, 3, 1)
+
+        ai.addWidget(cards.label(tr("ws.set_target_role"), "section"), 4, 0)
+        role_edit = QLineEdit()
+        bind_line_edit(role_edit, self.ctx.target_role_var)
+        ai.addWidget(role_edit, 4, 1, 1, 2)
+        seniority_combo = QComboBox()
+        for level in SUPPORTED_SENIORITY_LEVELS:
+            seniority_combo.addItem(tr(f"ai.seniority.{level}"), level)
+        seniority_combo.setCurrentIndex(max(0, seniority_combo.findData(self.ctx.seniority_var.get())))
+        seniority_combo.activated.connect(
+            lambda index: self.ctx.seniority_var.set(seniority_combo.itemData(index))
+        )
+        ai.addWidget(seniority_combo, 4, 3)
+
+        ai.addWidget(cards.label(tr("ws.set_claude_model"), "section"), 5, 0)
+        claude_model_edit = QLineEdit()
+        bind_line_edit(claude_model_edit, self.ctx.claude_model_var)
+        ai.addWidget(claude_model_edit, 5, 1, 1, 3)
+
+        ai.addWidget(cards.label(tr("ws.set_api_key"), "section"), 6, 0)
+        self.api_key_edit = QLineEdit()
+        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key_edit.setPlaceholderText(tr("ws.set_api_key_hint"))
+        ai.addWidget(self.api_key_edit, 6, 1)
+        save_key_button = IconButton(tr("ws.btn_save_key"), kind="tool")
+        save_key_button.clicked.connect(self._save_api_key)
+        ai.addWidget(save_key_button, 6, 2)
+        clear_key_button = IconButton(tr("ws.btn_clear_key"), kind="tool")
+        clear_key_button.clicked.connect(self._clear_api_key)
+        ai.addWidget(clear_key_button, 6, 3)
+        self.api_key_status_label = cards.label("", "muted", wrap=True)
+        ai.addWidget(self.api_key_status_label, 7, 1, 1, 3)
+
+        ai.addWidget(cards.label(tr("ws.set_ollama_model"), "section"), 8, 0)
         ollama_model_edit = QLineEdit()
         bind_line_edit(ollama_model_edit, self.ctx.ollama_model_var)
-        ai.addWidget(ollama_model_edit, 1, 1, 1, 2)
+        ai.addWidget(ollama_model_edit, 8, 1, 1, 3)
 
-        ai.addWidget(cards.label(tr("ws.set_ollama_host"), "section"), 2, 0)
+        ai.addWidget(cards.label(tr("ws.set_ollama_host"), "section"), 9, 0)
         ollama_host_edit = QLineEdit()
         bind_line_edit(ollama_host_edit, self.ctx.ollama_host_var)
-        ai.addWidget(ollama_host_edit, 2, 1, 1, 2)
+        ai.addWidget(ollama_host_edit, 9, 1, 1, 3)
+
+        ai.addWidget(cards.label(tr("ws.set_jd"), "section"), 10, 0)
+        self.job_description_text = make_text_edit(min_lines=3)
+        set_text_content(self.job_description_text, self.ctx.job_description_var.get())
+        self.job_description_text.textChanged.connect(
+            lambda: self.ctx.job_description_var.set(self.job_description_text.toPlainText())
+        )
+        ai.addWidget(self.job_description_text, 10, 1, 1, 3)
+
+        ai.addWidget(cards.label(tr("ws.set_resume"), "section"), 11, 0)
+        self.resume_text = make_text_edit(min_lines=3)
+        set_text_content(self.resume_text, self.ctx.resume_summary_var.get())
+        self.resume_text.textChanged.connect(
+            lambda: self.ctx.resume_summary_var.set(self.resume_text.toPlainText())
+        )
+        ai.addWidget(self.resume_text, 11, 1, 1, 3)
         tabs.addTab(ai_tab, tr("ws.tab_ai"))
+        self._refresh_provider_status()
 
         # -- media tab -------------------------------------------------------------
         media_tab = QWidget()
@@ -495,6 +603,70 @@ class WorkspaceScreen(QWidget):
 
     def _on_config_applied(self) -> None:
         self.video_player.set_video_path(self.ctx.config_model.video_path)
+        self._refresh_provider_status()
+
+    # -- analysis engine settings ---------------------------------------------
+
+    def _on_ai_provider_selected(self, index: int) -> None:
+        """Switch engines, asking for consent before anything leaves the PC."""
+        provider = self.ai_provider_combo.itemData(index)
+        if provider in {AI_PROVIDER_CLAUDE} and not self.ctx.cloud_ai_var.get():
+            if not messages.ask_yes_no(
+                self.window,
+                tr("ws.cloud_consent_title"),
+                tr("ws.cloud_consent_body"),
+            ):
+                self.ctx.status_var.set(tr("ws.cloud_declined"))
+                self._select_provider(AI_PROVIDER_OFFLINE)
+                return
+            self.ctx.cloud_ai_var.set(True)
+        self.ctx.ai_provider_var.set(provider)
+        self.ctx.apply_config_from_ui()
+
+    def _select_provider(self, provider: str) -> None:
+        self.ctx.ai_provider_var.set(provider)
+        position = self.ai_provider_combo.findData(provider)
+        if position >= 0:
+            self.ai_provider_combo.setCurrentIndex(position)
+        self.ctx.apply_config_from_ui()
+
+    def _refresh_provider_status(self) -> None:
+        if not hasattr(self, "provider_status_label"):
+            return
+        lines = []
+        for status in provider_statuses(self.ctx.ai_settings()):
+            mark = "✓" if status.available else "·"
+            model = f" ({status.model})" if status.model else ""
+            lines.append(f"{mark} {status.name}{model} — {status.detail}")
+        self.provider_status_label.setText("\n".join(lines))
+        self._refresh_key_status()
+
+    def _refresh_key_status(self) -> None:
+        if not hasattr(self, "api_key_status_label"):
+            return
+        source = credentials.anthropic_key_source()
+        if source == credentials.SOURCE_ENV:
+            text = tr("ws.key_source_env")
+        elif source == credentials.SOURCE_FILE:
+            text = tr("ws.key_source_file", masked=credentials.masked(credentials.anthropic_api_key()))
+        else:
+            text = tr("ws.key_source_none")
+        self.api_key_status_label.setText(f"{text}\n{tr('ws.set_api_key_hint')}")
+
+    def _save_api_key(self) -> None:
+        key = self.api_key_edit.text().strip()
+        if not key:
+            return
+        credentials.store_anthropic_api_key(key)
+        self.api_key_edit.clear()
+        self.ctx.status_var.set(tr("ws.key_saved"))
+        self._refresh_provider_status()
+
+    def _clear_api_key(self) -> None:
+        credentials.clear_anthropic_api_key()
+        self.api_key_edit.clear()
+        self.ctx.status_var.set(tr("ws.key_cleared"))
+        self._refresh_provider_status()
 
     def _set_session_controls(self, enabled: bool) -> None:
         for button in (
@@ -507,8 +679,12 @@ class WorkspaceScreen(QWidget):
             self.record_button,
             self.followup_button,
             self.followup_speak_button,
+            self.evaluate_button,
+            self.report_button,
         ):
             button.setEnabled(enabled)
+        # A probe needs a scored answer first; _on_insight turns it back on.
+        self.probe_button.setEnabled(False)
         if not self.ctx.enable_stt_var.get():
             self.record_button.setEnabled(False)
             self.stop_record_button.setEnabled(False)
@@ -673,8 +849,15 @@ class WorkspaceScreen(QWidget):
         ):
             self.ctx.status_var.set(tr("app.runtime_issues_status"))
             return
-        self.ctx.engine = InterviewEngine(questions=questions, sessions_root=self.ctx.config_model.sessions_root)
-        self.ctx.provider = QwenTTSProvider(self.ctx.config_model, self.ctx.engine.session.audio_cache_dir)
+        config = self.ctx.config_model
+        self.ctx.engine = InterviewEngine(
+            questions=questions,
+            sessions_root=config.sessions_root,
+            interview_type=config.interview_type,
+            language=self.ctx.interview_language_var.get(),
+            role=config.target_role,
+        )
+        self.ctx.provider = QwenTTSProvider(config, self.ctx.engine.session.audio_cache_dir)
         self.ctx.set_state(SessionState.READY)
         self.ctx.runtime_badge_var.set(tr("badge.session_ready"))
         self.ctx.warning_var.set(tr("ws.answer_timer_hint"))
@@ -695,6 +878,37 @@ class WorkspaceScreen(QWidget):
         set_text_content(self.followup_text, record.follow_up_question)
         self.prev_button.setEnabled(engine.current_index > 0)
         self.next_button.setEnabled(engine.current_index < engine.question_count - 1)
+        self._restore_coach_panel(record)
+        self._refresh_coverage()
+
+    def _restore_coach_panel(self, record) -> None:
+        """Show the saved verdict when returning to a question already scored."""
+        engine = self.ctx.engine
+        if engine is None:
+            return
+        if not record.evaluation:
+            self.coach_panel.set_message(tr("ws.coach_idle"))
+            self.probe_button.setEnabled(False)
+            self.ctx.last_score_var.set("—")
+            return
+        insight = insight_from_record(record, engine.language or "English")
+        self.coach_panel.show_insight(
+            insight,
+            engine.language or "English",
+            competency_key=engine.current_competency,
+            stage=engine.current_stage,
+        )
+        self.ctx.last_score_var.set(str(insight.evaluation.overall))
+        self.probe_button.setEnabled(insight.has_probe)
+
+    def _refresh_coverage(self) -> None:
+        engine = self.ctx.engine
+        if engine is None:
+            self.ctx.coverage_var.set("0 / 0")
+            return
+        coverage = engine.coverage()
+        covered = sum(1 for count in coverage.values() if count)
+        self.ctx.coverage_var.set(f"{covered} / {max(1, len(coverage))}")
 
     def save_current_memo(self) -> None:
         engine = self.ctx.engine
@@ -872,6 +1086,8 @@ class WorkspaceScreen(QWidget):
         ctx.runtime_badge_var.set(tr("badge.session_answering"))
         ctx.warning_var.set(tr("ws.transcript_hint"))
         ctx.set_state(SessionState.ANSWERING)
+        if ctx.config_model.enable_live_scoring and transcript.strip():
+            self._evaluate_answer()
 
     def _on_transcript_error(self, exc: Exception) -> None:
         ctx = self.ctx
@@ -881,18 +1097,120 @@ class WorkspaceScreen(QWidget):
         ctx.warning_var.set(str(exc))
         messages.error(self.window, tr("ws.stt_error_title"), str(exc))
 
+    # -- analysis --------------------------------------------------------------
+
+    def _evaluate_answer(self) -> None:
+        """Score the current answer and work out whether to probe."""
+        ctx = self.ctx
+        engine = ctx.engine
+        if engine is None or self._evaluating:
+            return
+        ctx.apply_config_from_ui()
+        self.save_current_memo()
+
+        record = engine.current_record
+        transcript = (self.transcript_text.toPlainText().strip() or record.memo).strip()
+        if not transcript:
+            self.coach_panel.set_message(tr("ws.coach_empty_answer"), "warning")
+            self.detail_tabs.setCurrentIndex(self.coach_tab_index)
+            return
+
+        question = record.clean_question
+        language = engine.language or detect_language(question)
+        index = engine.current_index
+        chain = ctx.ai_chain()
+
+        self._evaluating = True
+        self.evaluate_button.setEnabled(False)
+        self.coach_panel.set_running()
+        self.detail_tabs.setCurrentIndex(self.coach_tab_index)
+        ctx.status_var.set(tr("ws.coach_running"))
+        ctx.runtime_badge_var.set(tr("badge.session_scoring"))
+
+        run_bg(
+            self,
+            lambda: analyze_answer_turn(
+                question,
+                transcript,
+                language,
+                chain=chain,
+                competency_key=engine.competency_for(index),
+                interview_type=ctx.config_model.interview_type,
+                question_index=index + 1,
+                duration_seconds=engine.current_answer_seconds(),
+                probe_depth=engine.probe_depth(index),
+                max_probe_depth=ctx.config_model.max_probe_depth,
+                probing_enabled=ctx.config_model.enable_adaptive_probing,
+                effort=ctx.ai_effort(),
+                role=ctx.config_model.target_role,
+            ),
+            on_done=lambda insight: self._on_insight(index, insight),
+            on_error=self._on_evaluate_error,
+            name="answer-analysis",
+        )
+
+    def _on_insight(self, index: int, insight: AnswerInsight) -> None:
+        ctx = self.ctx
+        engine = ctx.engine
+        self._evaluating = False
+        self.evaluate_button.setEnabled(True)
+        if engine is None:
+            return
+
+        engine.record_insight(insight, index=index)
+        language = engine.language or "English"
+        if index == engine.current_index:
+            self.coach_panel.show_insight(
+                insight,
+                language,
+                competency_key=engine.competency_for(index),
+                stage=engine.current_stage,
+            )
+            if insight.has_probe:
+                set_text_content(self.followup_text, insight.probe.question)
+        self.probe_button.setEnabled(insight.has_probe)
+        ctx.last_score_var.set(str(insight.evaluation.overall))
+        self._refresh_coverage()
+        ctx.status_var.set(tr("ws.eval_done", score=insight.evaluation.overall))
+        ctx.runtime_badge_var.set(tr("badge.session_answering"))
+        ctx.set_state(SessionState.ANSWERING)
+        if insight.has_probe and ctx.config_model.auto_speak_probe:
+            self._speak_follow_up()
+
+    def _on_evaluate_error(self, exc: Exception) -> None:
+        self._evaluating = False
+        self.evaluate_button.setEnabled(True)
+        logger.exception("Answer analysis failed.", exc_info=exc)
+        self.coach_panel.set_message(f"{tr('ws.eval_failed')}\n{exc}", "warning")
+        self.ctx.status_var.set(tr("ws.eval_failed"))
+        self.ctx.runtime_badge_var.set(tr("badge.session_error"))
+
+    def _ask_probe(self) -> None:
+        """Put the suggested follow-up in front of the candidate."""
+        probe_text = self.followup_text.toPlainText().strip()
+        if not probe_text:
+            return
+        self.ctx.status_var.set(tr("ws.probe_asked"))
+        self._speak_follow_up()
+
+    def _open_report(self) -> None:
+        self.window.generate_report()
+
     # -- follow-up ------------------------------------------------------------
 
     def _generate_follow_up(self) -> None:
         ctx = self.ctx
-        if ctx.engine is None:
+        engine = ctx.engine
+        if engine is None:
             return
         ctx.apply_config_from_ui()
         self.save_current_memo()
-        record = ctx.engine.current_record
+        record = engine.current_record
         transcript = self.transcript_text.toPlainText().strip() or record.memo
         question = record.clean_question
-        language = detect_language(question)
+        language = engine.language or detect_language(question)
+        index = engine.current_index
+        chain = ctx.ai_chain()
         ctx.status_var.set(tr("ws.followup_generating"))
         ctx.set_state(SessionState.FOLLOW_UP_GENERATING)
         ctx.runtime_badge_var.set(tr("badge.session_followup"))
@@ -900,15 +1218,15 @@ class WorkspaceScreen(QWidget):
 
         run_bg(
             self,
-            lambda: generate_follow_up_question(
+            lambda: follow_up_for_answer(
                 question,
                 transcript,
                 language,
-                provider=ctx.config_model.followup_provider,
-                ollama_model=ctx.config_model.ollama_model,
-                ollama_host=ctx.config_model.ollama_host,
+                chain=chain,
+                competency_key=engine.competency_for(index),
+                depth=engine.probe_depth(index) + 1,
             ),
-            on_done=self._on_follow_up_done,
+            on_done=lambda probe: self._on_follow_up_done(probe.question),
             name="follow-up",
         )
 
