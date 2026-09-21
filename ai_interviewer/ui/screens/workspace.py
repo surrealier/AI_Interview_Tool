@@ -30,10 +30,13 @@ from ai_interviewer.config import (
     LARGE_MODEL_ID,
     MAX_PROBE_DEPTH,
     QWEN_BACKEND,
+    SUGGESTED_OLLAMA_MODELS,
     SUPPORTED_AI_EFFORTS,
     SUPPORTED_AI_PROVIDERS,
     SUPPORTED_SENIORITY_LEVELS,
+    SUPPORTED_STT_MODELS,
     SUPPORTED_TTS_BACKENDS,
+    STT_MODEL_AUTO,
 )
 from ai_interviewer.default_questions import (
     default_questions_text,
@@ -52,7 +55,12 @@ from ai_interviewer.intelligence import (
     provider_statuses,
 )
 from ai_interviewer.question_parser import detect_language, parse_questions
-from ai_interviewer.stt import STTError, input_device_id_from_label, list_input_devices
+from ai_interviewer.stt import (
+    STTError,
+    effective_model_size,
+    input_device_id_from_label,
+    list_input_devices,
+)
 from ai_interviewer.tts.qwen_provider import QwenTTSProvider
 from ai_interviewer.tts_catalog import (
     backend_display_name,
@@ -86,6 +94,7 @@ class WorkspaceScreen(QWidget):
         self.ctx = ctx
         self.window = window
         self._evaluating = False
+        self._prefetching = False
         self._pending_blueprint = None
 
         outer = QVBoxLayout(self)
@@ -420,9 +429,13 @@ class WorkspaceScreen(QWidget):
 
         audio.addWidget(cards.label(tr("ws.set_stt_model"), "section"), 0, 0)
         stt_model_combo = QComboBox()
-        stt_model_combo.addItems(("tiny", "base", "small", "medium", "large-v3"))
+        stt_model_combo.addItems(SUPPORTED_STT_MODELS)
         bind_combo(stt_model_combo, self.ctx.stt_model_var)
         audio.addWidget(stt_model_combo, 0, 1)
+        self.stt_effective_label = cards.label("", "muted", wrap=True)
+        audio.addWidget(self.stt_effective_label, 0, 2)
+        self.ctx.stt_model_var.changed.connect(lambda _v: self._refresh_stt_hint())
+        self.ctx.stt_device_var.changed.connect(lambda _v: self._refresh_stt_hint())
 
         audio.addWidget(cards.label(tr("ws.set_input"), "section"), 1, 0)
         self.input_device_combo = QComboBox()
@@ -443,6 +456,7 @@ class WorkspaceScreen(QWidget):
         bind_combo(stt_compute_combo, self.ctx.stt_compute_var)
         audio.addWidget(stt_compute_combo, 2, 2)
         tabs.addTab(audio_tab, tr("ws.tab_stt_settings"))
+        self._refresh_stt_hint()
 
         # -- AI tab -------------------------------------------------------------
         ai_tab = QWidget()
@@ -523,9 +537,13 @@ class WorkspaceScreen(QWidget):
         ai.addWidget(self.api_key_status_label, 7, 1, 1, 3)
 
         ai.addWidget(cards.label(tr("ws.set_ollama_model"), "section"), 8, 0)
-        ollama_model_edit = QLineEdit()
-        bind_line_edit(ollama_model_edit, self.ctx.ollama_model_var)
-        ai.addWidget(ollama_model_edit, 8, 1, 1, 3)
+        ollama_model_combo = QComboBox()
+        ollama_model_combo.setEditable(True)
+        ollama_model_combo.addItems(SUGGESTED_OLLAMA_MODELS)
+        ollama_model_combo.setCurrentText(self.ctx.ollama_model_var.get())
+        ollama_model_combo.currentTextChanged.connect(self.ctx.ollama_model_var.set)
+        ai.addWidget(ollama_model_combo, 8, 1, 1, 2)
+        ai.addWidget(cards.label(tr("ws.ollama_model_hint"), "muted", wrap=True), 8, 3)
 
         ai.addWidget(cards.label(tr("ws.set_ollama_host"), "section"), 9, 0)
         ollama_host_edit = QLineEdit()
@@ -634,6 +652,18 @@ class WorkspaceScreen(QWidget):
         if position >= 0:
             self.ai_provider_combo.setCurrentIndex(position)
         self.ctx.apply_config_from_ui()
+
+    def _refresh_stt_hint(self) -> None:
+        """Say which checkpoint `auto` resolves to on this machine."""
+        if not hasattr(self, "stt_effective_label"):
+            return
+        self.ctx.config_model.stt_model_size = self.ctx.stt_model_var.get()
+        self.ctx.config_model.stt_device = self.ctx.stt_device_var.get()
+        resolved = effective_model_size(self.ctx.config_model)
+        if self.ctx.stt_model_var.get() == STT_MODEL_AUTO:
+            self.stt_effective_label.setText(tr("ws.stt_auto_hint", model=resolved))
+        else:
+            self.stt_effective_label.setText("")
 
     def _refresh_provider_status(self) -> None:
         if not hasattr(self, "provider_status_label"):
@@ -1059,6 +1089,37 @@ class WorkspaceScreen(QWidget):
             ctx.warning_var.set(tr("ws.answer_timing_hint"))
         ctx.set_state(SessionState.ANSWERING)
         self._render_current_question()
+        self._prefetch_next_question()
+
+    def _prefetch_next_question(self) -> None:
+        """Generate the next question's audio while the candidate answers.
+
+        Synthesis costs more than the audio it produces (about 13s on CUDA and
+        27s on CPU for a 4s sentence), so doing it now hides the whole wait
+        inside the answer window; the cache makes the next Next instant.
+        """
+        ctx = self.ctx
+        engine = ctx.engine
+        if engine is None or ctx.tts_running or self._prefetching:
+            return
+        if engine.next_question_audio() is None:
+            return
+        provider = ctx.provider
+        if provider is None:
+            return
+
+        self._prefetching = True
+
+        def finished(_result=None) -> None:
+            self._prefetching = False
+
+        run_bg(
+            self,
+            lambda: engine.prefetch_next_question(provider),
+            on_done=finished,
+            on_error=lambda _exc: finished(),
+            name="tts-prefetch",
+        )
 
     def _on_tts_error(self, token: int, exc: Exception) -> None:
         ctx = self.ctx

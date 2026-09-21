@@ -38,8 +38,41 @@ CLOUD_AI_PROVIDERS = (AI_PROVIDER_CLAUDE,)
 
 DEFAULT_CLAUDE_MODEL = "claude-opus-5"
 SUPPORTED_AI_EFFORTS = ("low", "medium", "high")
+
+# Speech-to-text. "auto" picks per device (see stt.resolve_model_size): the
+# turbo checkpoint where a GPU can absorb it, a small one where the CPU has to.
+# Measured on 24s of Korean speech, int8 on CPU / float16 on CUDA:
+#   small           7.9x realtime (CPU)   41.2x (CUDA)
+#   medium          3.1x realtime (CPU)   — loses punctuation
+#   large-v3-turbo  3.4x realtime (CPU)   23.8x (CUDA)  best accuracy
+# distil-* checkpoints are deliberately absent: they are English-only and
+# silently translate Korean speech into English rather than transcribing it.
+STT_MODEL_AUTO = "auto"
+STT_MODEL_CUDA_DEFAULT = "large-v3-turbo"
+STT_MODEL_CPU_DEFAULT = "small"
+SUPPORTED_STT_MODELS = (
+    STT_MODEL_AUTO,
+    "tiny",
+    "base",
+    "small",
+    "medium",
+    "large-v3-turbo",
+    "large-v3",
+)
 SUPPORTED_SENIORITY_LEVELS = ("junior", "mid", "senior", "lead")
 MAX_PROBE_DEPTH = 4
+
+# Local models small enough to answer on a CPU while still following a JSON
+# schema. Suggestions only — the field stays editable, and the daemon decides
+# what it actually has pulled. Qwen leads because this app's primary interview
+# language is Korean and that family handles it best at this size.
+SUGGESTED_OLLAMA_MODELS = (
+    "qwen3:4b",
+    "qwen3:8b",
+    "gemma3:4b",
+    "llama3.2:3b",
+    "phi4-mini",
+)
 
 
 def application_base_dir() -> Path:
@@ -143,7 +176,7 @@ class AppConfig:
     use_flash_attention: bool = False
     max_new_tokens: int = 8192
     enable_windows_sapi_fallback: bool = False
-    stt_model_size: str = "small"
+    stt_model_size: str = STT_MODEL_AUTO
     stt_device: str = "auto"
     stt_compute_type: str = "auto"
     input_device: str = "Default"

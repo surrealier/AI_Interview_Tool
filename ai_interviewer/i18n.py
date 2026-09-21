@@ -414,6 +414,9 @@ KO: dict[str, str] = {
     "ws.blueprint_done": "질문 설계를 적용했습니다. ({engine})",
     "ws.blueprint_failed": "질문 설계 생성에 실패해 기본 질문 팩을 사용합니다.",
     "ws.btn_design_plan": "질문 설계",
+    "ws.stt_auto_hint": "이 PC 기준: {model}",
+    "diag.stt_model": "음성 인식 모델",
+    "ws.ollama_model_hint": "CPU에서도 도는 경량 모델입니다. 먼저 ollama pull 로 받아 두세요.",
     "ws.blueprint_needs_engine": "질문 설계에는 로컬 Ollama 또는 Claude 엔진이 필요합니다. 설정 → AI 코치에서 선택하세요.",
     # -- AI settings -----------------------------------------------------
     "ws.tab_ai": "AI 코치",
@@ -870,6 +873,9 @@ EN: dict[str, str] = {
     "ws.blueprint_done": "Question plan applied. ({engine})",
     "ws.blueprint_failed": "Could not design a plan; using the question pack instead.",
     "ws.btn_design_plan": "Design plan",
+    "ws.stt_auto_hint": "On this PC: {model}",
+    "diag.stt_model": "Speech-to-text model",
+    "ws.ollama_model_hint": "Lightweight models that run on CPU. Pull one with ollama pull first.",
     "ws.blueprint_needs_engine": "Designing a plan needs the local Ollama or Claude engine. Pick one under Settings → AI coach.",
     # -- AI settings -----------------------------------------------------
     "ws.tab_ai": "AI coach",

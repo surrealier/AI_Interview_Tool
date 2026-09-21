@@ -118,6 +118,29 @@ models/
   Qwen3-TTS-12Hz-0.6B-CustomVoice/
 ```
 
+## Speech Models
+
+**Text-to-speech** is Qwen3-TTS (0.6B by default, 1.7B for stronger tone
+control), with Windows SAPI as an optional fallback. Synthesis is slower than
+real time — roughly 13s on CUDA and 27s on CPU for a 4-second sentence — so the
+app generates the *next* question while the candidate is answering the current
+one. From the second question on, playback starts immediately from the cache.
+
+**Speech-to-text** is faster-whisper, and the model defaults to `auto`:
+
+| device | model | why |
+| --- | --- | --- |
+| CUDA | `large-v3-turbo` | best accuracy, 23.8x realtime |
+| CPU | `small` | 7.9x realtime, keeps the interview responsive |
+
+`large-v3-turbo` can be selected manually on CPU too (3.4x realtime — still
+faster and more accurate than `medium`). The `distil-*` checkpoints are not
+offered: they are English-only and translate Korean speech into English rather
+than transcribing it.
+
+Both figures were measured on 24 seconds of Korean speech, int8 on CPU and
+float16 on CUDA.
+
 ## Runtime Diagnostics
 
 Inside the app, press `런타임 진단`.

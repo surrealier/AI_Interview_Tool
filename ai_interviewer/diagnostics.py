@@ -145,7 +145,17 @@ def _tts_checks(config: AppConfig) -> list[DiagnosticItem]:
 
 
 def _stt_checks(config: AppConfig) -> list[DiagnosticItem]:
-    items: list[DiagnosticItem] = []
+    from ai_interviewer.stt import effective_model_size, resolve_device
+
+    device = resolve_device(config.stt_device)
+    items: list[DiagnosticItem] = [
+        DiagnosticItem(
+            tr("diag.stt_model"),
+            STATUS_OK,
+            f"{effective_model_size(config)} ({device})",
+            required=False,
+        )
+    ]
     for package in ("sounddevice", "soundfile", "numpy", "faster_whisper"):
         items.append(
             DiagnosticItem(

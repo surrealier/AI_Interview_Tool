@@ -67,6 +67,9 @@ class QwenTTSProvider:
         self._model: Any | None = None
         self._last_backend = "qwen3-tts"
         self._last_warning = ""
+        # Guards the two status fields above: a background prefetch must not
+        # relabel the backend the UI is showing for the current question.
+        self._status_lock = threading.Lock()
         self._resolved_device: str | None = None
         self._resolved_dtype: str | None = None
 
@@ -129,6 +132,30 @@ class QwenTTSProvider:
             backend=self._last_backend,
             warning=self._last_warning,
         )
+
+    def prefetch(self, text: str, cache_key: str, language: str, speaker: str) -> bool:
+        """Warm the audio cache for a question that has not been asked yet.
+
+        Synthesis is slow enough to be felt — measured on one Korean sentence,
+        roughly 13s on CUDA and 27s on CPU against ~4s of speech — so the wait
+        is moved into the window where the candidate is already talking. Runs
+        silently: nothing is played, and the status fields the UI reads about
+        the *current* question are restored afterwards so a prefetch can never
+        relabel the answer on screen.
+        """
+        if not text.strip():
+            return False
+        with self._status_lock:
+            backend, warning = self._last_backend, self._last_warning
+        try:
+            self.synthesize(text=text, cache_key=cache_key, language=language, speaker=speaker)
+            return True
+        except Exception:  # noqa: BLE001 - a warm cache is an optimisation, never a failure
+            logger.info("Could not prefetch audio for the next question.", exc_info=True)
+            return False
+        finally:
+            with self._status_lock:
+                self._last_backend, self._last_warning = backend, warning
 
     def synthesize(self, text: str, cache_key: str, language: str, speaker: str) -> Path:
         if self.config.tts_backend == WINDOWS_SAPI_BACKEND:

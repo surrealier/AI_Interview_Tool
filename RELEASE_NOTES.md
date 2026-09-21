@@ -49,6 +49,31 @@ The interview stops being a question reader and starts being an assessment.
 - The setup wizard has an analysis-engine step, and takes cloud consent there
   rather than silently at the first scored answer.
 
+### Changed (models and speed)
+
+- **Speech-to-text picks its model by device.** The default is now `auto`:
+  `large-v3-turbo` where CUDA is available, `small` on CPU. Measured on 24s of
+  Korean speech (int8 on CPU, float16 on CUDA):
+
+  | model | CPU | CUDA | notes |
+  | --- | --- | --- | --- |
+  | `small` | 7.9x realtime | 41.2x | good, minor errors |
+  | `medium` | 3.1x realtime | — | loses punctuation |
+  | `large-v3-turbo` | 3.4x realtime | 23.8x | best accuracy, and faster than `medium` |
+
+  `large-v3-turbo` is now selectable everywhere. `distil-*` checkpoints are
+  deliberately not offered: they are English-only and silently *translate*
+  Korean speech into English instead of transcribing it.
+- **The next question is synthesized while the candidate answers.** Speech
+  synthesis costs more than the audio it produces — about 13s on CUDA and 27s
+  on CPU for a 4s sentence — so the wait now happens inside the answer window.
+  Measured end to end, the pause before the next question went from 9.9s to
+  0.000s (served from the cache). This is what makes a CPU-only machine usable
+  from the second question onward.
+- **Local model suggestions.** The Ollama field is now an editable picker of
+  models small enough to answer on a CPU, led by Qwen because it handles
+  Korean best at that size.
+
 ### Fixed
 
 - Korean measurement detection no longer fires on ordinary words: units are

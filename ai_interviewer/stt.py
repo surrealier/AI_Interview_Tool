@@ -5,7 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ai_interviewer.config import AppConfig
+from ai_interviewer.config import (
+    STT_MODEL_AUTO,
+    STT_MODEL_CPU_DEFAULT,
+    STT_MODEL_CUDA_DEFAULT,
+    AppConfig,
+)
 
 
 class STTError(RuntimeError):
@@ -147,6 +152,37 @@ class MicrophoneRecorder:
         )
 
 
+def resolve_device(configured: str) -> str:
+    """CUDA when the runtime actually has it, otherwise CPU."""
+    if configured != "auto":
+        return configured
+    try:
+        import torch
+
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    except Exception:  # noqa: BLE001 - torch missing or broken means CPU
+        return "cpu"
+
+
+def resolve_model_size(configured: str, device: str) -> str:
+    """Pick the transcription model, honouring an explicit choice.
+
+    "auto" is the default because the right answer differs by an order of
+    magnitude between devices: on CUDA the turbo checkpoint is both the most
+    accurate option and comfortably real-time, while on CPU it runs at roughly
+    3x real-time, so a 90-second answer would keep the candidate waiting about
+    half a minute. `small` stays responsive there.
+    """
+    if configured and configured != STT_MODEL_AUTO:
+        return configured
+    return STT_MODEL_CUDA_DEFAULT if device == "cuda" else STT_MODEL_CPU_DEFAULT
+
+
+def effective_model_size(config: AppConfig) -> str:
+    """What `auto` will actually load on this machine, for UI and diagnostics."""
+    return resolve_model_size(config.stt_model_size, resolve_device(config.stt_device))
+
+
 class WhisperTranscriber:
     _cache_lock = threading.Lock()
     _model_cache: dict[tuple[str, str, str], Any] = {}
@@ -171,11 +207,17 @@ class WhisperTranscriber:
         except Exception as exc:  # pragma: no cover - depends on external STT runtime
             raise STTError(f"STT transcription failed: {exc}") from exc
 
-        return TranscriptResult(text=text, audio_path=audio_path, model_size=self.config.stt_model_size)
+        device, _compute_type = self._resolve_runtime()
+        return TranscriptResult(
+            text=text,
+            audio_path=audio_path,
+            model_size=resolve_model_size(self.config.stt_model_size, device),
+        )
 
     def _load_model(self) -> Any:
         device, compute_type = self._resolve_runtime()
-        key = (self.config.stt_model_size, device, compute_type)
+        model_size = resolve_model_size(self.config.stt_model_size, device)
+        key = (model_size, device, compute_type)
         with self._cache_lock:
             cached = self._model_cache.get(key)
             if cached is not None:
@@ -188,7 +230,7 @@ class WhisperTranscriber:
 
         try:
             model = WhisperModel(
-                self.config.stt_model_size,
+                model_size,
                 device=device,
                 compute_type=compute_type,
             )
@@ -200,17 +242,9 @@ class WhisperTranscriber:
         return model
 
     def _resolve_runtime(self) -> tuple[str, str]:
-        device = self.config.stt_device
+        device = resolve_device(self.config.stt_device)
         compute_type = self.config.stt_compute_type
-        if device == "auto":
-            device = "cpu"
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    device = "cuda"
-            except Exception:
-                device = "cpu"
         if compute_type == "auto":
+            # float16 is a GPU format; CTranslate2 rejects it on CPU.
             compute_type = "float16" if device == "cuda" else "int8"
         return device, compute_type

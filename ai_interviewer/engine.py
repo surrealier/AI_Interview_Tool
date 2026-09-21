@@ -214,6 +214,27 @@ class InterviewEngine:
     def _cache_key(self, record: QuestionRecord) -> str:
         return f"{self.session.session_id}-{record.question_index}"
 
+    def next_question_audio(self) -> tuple[str, str] | None:
+        """Text and cache key of the question after this one, for prefetching.
+
+        Returns None on the last question, where there is nothing to warm.
+        """
+        index = self.current_index + 1
+        if index >= self.question_count:
+            return None
+        record = self.session.record_at(index)
+        return record.clean_question, self._cache_key(record)
+
+    def prefetch_next_question(self, provider: SpeechProvider) -> bool:
+        """Synthesize the next question into the cache while this one is answered."""
+        upcoming = self.next_question_audio()
+        prefetch = getattr(provider, "prefetch", None)
+        if upcoming is None or prefetch is None:
+            return False
+        text, cache_key = upcoming
+        language, speaker = provider.resolve_voice(text)
+        return bool(prefetch(text=text, cache_key=cache_key, language=language, speaker=speaker))
+
     # -- reporting ----------------------------------------------------------
 
     def build_report(self, chain: ProviderChain | None = None, effort: str = "high") -> SessionReport:
