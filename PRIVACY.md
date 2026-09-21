@@ -19,7 +19,12 @@ Default settings and logs:
 %APPDATA%\AIInterview\config.json
 %APPDATA%\AIInterview\logs\app.log
 %APPDATA%\AIInterview\credentials.json   (only if you save an API key)
+%APPDATA%\AIInterview\tts_cache\         (synthesised question audio)
 ```
+
+The voice cache holds spoken *questions*, never your answers. It is shared
+across sessions so a question is synthesised once instead of on every run, and
+it is safe to delete at any time — the app regenerates what it needs.
 
 Session folders may contain personal data, including voice recordings, answers,
 transcripts, notes, job/company references, generated follow-up questions,

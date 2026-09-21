@@ -70,6 +70,12 @@ assessment becomes the subject.
   first call — never at the first scored answer.
 - A follow-up is offered, not forced: the app proposes the question and the
   interviewer decides whether to ask it.
+- The interviewer speaks in sentences, not items. Synthesised audio is trimmed
+  of its leading and trailing padding before playback, because a question
+  wrapped in a second of silence reads as a list entry being recited rather
+  than a person asking something. Pauses inside a sentence are shortened to
+  keep the phrase moving, never removed — speech without any pause is its own
+  kind of wrong.
 - Speaker and model are selected from known options, never free text.
 - Korean and English modes must not mix question packs.
 - Fallback quality drops must be visible in runtime status and warnings.

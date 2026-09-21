@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from ai_interviewer.app_state import SessionState
 from ai_interviewer.config import (
     AppConfig,
+    default_tts_cache_dir,
     DEFAULT_MODEL_ID,
     LARGE_MODEL_ID,
     QWEN_BACKEND,
@@ -288,7 +289,7 @@ class AppContext(QObject):
         self.runtime_badge_var.set(tr("badge.preloading"))
         self.warning_var.set(tr("app.preload_first_run"))
         self.status_var.set(tr("app.preloading"))
-        cache_dir = self.config_model.sessions_root / "_preload"
+        cache_dir = default_tts_cache_dir()
         provider = QwenTTSProvider(self.config_model, cache_dir)
         self.preload_provider = provider
 

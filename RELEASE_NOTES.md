@@ -64,18 +64,38 @@ The interview stops being a question reader and starts being an assessment.
   `large-v3-turbo` is now selectable everywhere. `distil-*` checkpoints are
   deliberately not offered: they are English-only and silently *translate*
   Korean speech into English instead of transcribing it.
-- **The next question is synthesized while the candidate answers.** Speech
-  synthesis costs more than the audio it produces — about 13s on CUDA and 27s
-  on CPU for a 4s sentence — so the wait now happens inside the answer window.
-  Measured end to end, the pause before the next question went from 9.9s to
-  0.000s (served from the cache). This is what makes a CPU-only machine usable
-  from the second question onward.
+- **Questions are synthesized before they are needed.** Speech synthesis
+  costs more than the audio it produces — about 13s on CUDA and 27s on CPU for
+  a 4s sentence — so the app moves the wait out of the interview: the first
+  question is generated during setup right after the sound test, and every
+  later question while the candidate answers the previous one. Measured end to
+  end, the pause before a question went from 9.9s to 0.000s. This is what makes
+  a CPU-only machine usable.
+- **The voice cache is now shared and content-addressed.** It moved from each
+  session folder to `%APPDATA%\AIInterview\tts_cache` and is keyed by model,
+  voice, and text rather than by session, so a question is synthesized once
+  instead of on every run — a repeated question pack now plays back instantly
+  throughout. Delete the folder any time; it is rebuilt on demand.
 - **Local model suggestions.** The Ollama field is now an editable picker of
   models small enough to answer on a CPU, led by Qwen because it handles
   Korean best at that size.
 
 ### Fixed
 
+- **Questions no longer sound like items being read out one at a time.**
+  Qwen3-TTS pads every utterance with 0.5-1.0s of silence at each end and
+  sometimes drops a half-second stop mid-sentence; played back one question at
+  a time, that dead air was most of what sat between questions. Generated audio
+  is now tightened before it is cached: edges cut to a 60ms breath, internal
+  gaps capped at 220ms rather than removed, so clause pauses survive. Measured
+  over 27 clips, 32% of each file was dead air, and transcription error against
+  the source text went from 1.14% to 0.00% — the silence was removed, none of
+  the speech was.
+- **The interviewer tone instruction is now applied on both model sizes.** It
+  was withheld from the 0.6B model on the belief that the small model ignored
+  it; the model's output demonstrably changes when it is applied, and this
+  instruction is the only prosody control Qwen3-TTS exposes (it has no SSML).
+  The wording now asks explicitly for connected, sentence-level delivery.
 - Korean measurement detection no longer fires on ordinary words: units are
   only counted next to a figure, so 분류 / 초기 / 건강 / 명확 stopped being read
   as "numeric evidence".

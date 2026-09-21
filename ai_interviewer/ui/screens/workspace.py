@@ -37,6 +37,7 @@ from ai_interviewer.config import (
     SUPPORTED_STT_MODELS,
     SUPPORTED_TTS_BACKENDS,
     STT_MODEL_AUTO,
+    default_tts_cache_dir,
 )
 from ai_interviewer.default_questions import (
     default_questions_text,
@@ -956,7 +957,7 @@ class WorkspaceScreen(QWidget):
             role=config.target_role,
         )
         self._attach_designed_plan(questions)
-        self.ctx.provider = QwenTTSProvider(config, self.ctx.engine.session.audio_cache_dir)
+        self.ctx.provider = QwenTTSProvider(config, default_tts_cache_dir())
         self.ctx.set_state(SessionState.READY)
         self.ctx.runtime_badge_var.set(tr("badge.session_ready"))
         self.ctx.warning_var.set(tr("ws.answer_timer_hint"))
@@ -1035,7 +1036,7 @@ class WorkspaceScreen(QWidget):
             raise RuntimeError("Session has not started.")
         if self.ctx.provider is None:
             self.ctx.apply_config_from_ui()
-            self.ctx.provider = QwenTTSProvider(self.ctx.config_model, self.ctx.engine.session.audio_cache_dir)
+            self.ctx.provider = QwenTTSProvider(self.ctx.config_model, default_tts_cache_dir())
         return self.ctx.provider
 
     def _speak_current(self, repeat: bool) -> None:
@@ -1440,7 +1441,7 @@ class WorkspaceScreen(QWidget):
             provider = (
                 self._get_provider()
                 if self.ctx.engine is not None
-                else QwenTTSProvider(self.ctx.config_model, self.ctx.config_model.sessions_root / "_diagnostics")
+                else QwenTTSProvider(self.ctx.config_model, default_tts_cache_dir())
             )
             provider.play_system_beep()
             self.ctx.status_var.set(tr("ws.beep_done"))
@@ -1516,7 +1517,7 @@ class WorkspaceScreen(QWidget):
         self._stop_tts()
         self.save_current_memo()
         ctx.engine.restart()
-        ctx.provider = QwenTTSProvider(ctx.config_model, ctx.engine.session.audio_cache_dir)
+        ctx.provider = QwenTTSProvider(ctx.config_model, default_tts_cache_dir())
         self._render_current_question()
         ctx.status_var.set(tr("ws.session_restarted"))
         self._speak_current(repeat=False)

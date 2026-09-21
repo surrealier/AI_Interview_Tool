@@ -25,6 +25,7 @@ from ai_interviewer.config import (
     AI_PROVIDER_OFFLINE,
     AI_PROVIDER_OLLAMA,
     QWEN_BACKEND,
+    default_tts_cache_dir,
 )
 from ai_interviewer.default_questions import (
     default_questions_text,
@@ -650,7 +651,7 @@ class WizardScreen(QWidget):
         self.ctx.sound_test_passed = False
         self.ctx.sound_test_status_var.set(tr("wizard.sound_testing"))
         self.ctx.runtime_badge_var.set(tr("badge.sound_test"))
-        provider = QwenTTSProvider(self.ctx.config_model, self.ctx.config_model.sessions_root / "_setup_sound_test")
+        provider = QwenTTSProvider(self.ctx.config_model, default_tts_cache_dir())
         self.ctx.preload_provider = provider
 
         run_bg(
@@ -661,10 +662,44 @@ class WizardScreen(QWidget):
             name="setup-sound-test",
         )
 
+    def _warm_first_question(self) -> None:
+        """Synthesize the opening question while the user finishes setup.
+
+        The first question is the one prefetch cannot help with: there is no
+        answer window before it. Generating it here, once the model is warm from
+        the sound test, means the interview opens with speech instead of a
+        30-second pause on CPU. The cache is shared and content-addressed, so
+        the interview finds this audio even though no session exists yet.
+        """
+        if self.ctx.config_model.tts_backend != QWEN_BACKEND:
+            return
+        questions = parse_questions(self._setup_questions_content())
+        if not questions:
+            return
+
+        text = questions[0].clean
+        provider = QwenTTSProvider(self.ctx.config_model, default_tts_cache_dir())
+
+        def warm() -> bool:
+            language, speaker = provider.resolve_voice(text)
+            return provider.prefetch(
+                text=text, cache_key="setup-first-question", language=language, speaker=speaker
+            )
+
+        run_bg(
+            self,
+            warm,
+            on_error=lambda exc: logger.info("Could not warm the first question: %s", exc),
+            name="warm-first-question",
+        )
+
     def _on_setup_sound_test_done(self, result) -> None:
         self.ctx.sound_test_passed = True
         self.ctx.sound_test_status_var.set(tr("wizard.sound_done", backend=result.backend, speaker=result.speaker))
         self.ctx.runtime_badge_var.set(tr("badge.ready"))
+        # The model is loaded and the question list is already chosen by this
+        # step, so this is the last quiet moment before the interview opens.
+        self._warm_first_question()
 
     def _on_setup_sound_test_error(self, exc: Exception) -> None:
         self.ctx.sound_test_passed = False

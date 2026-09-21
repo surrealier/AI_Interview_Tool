@@ -123,8 +123,18 @@ models/
 **Text-to-speech** is Qwen3-TTS (0.6B by default, 1.7B for stronger tone
 control), with Windows SAPI as an optional fallback. Synthesis is slower than
 real time — roughly 13s on CUDA and 27s on CPU for a 4-second sentence — so the
-app generates the *next* question while the candidate is answering the current
-one. From the second question on, playback starts immediately from the cache.
+app never makes you wait for it:
+
+- The **first** question is generated during setup, right after the sound test.
+- Every **later** question is generated while you answer the previous one.
+- The cache is shared and keyed by voice and text, so a repeated question pack
+  plays back instantly on every later run (`%APPDATA%\AIInterview\tts_cache`).
+- Generated audio is tightened before caching: the model's 0.5-1.0s of padding
+  at each end is cut to a short breath and an over-long mid-sentence stop is
+  capped, so a question is spoken as a sentence rather than delivered inside a
+  bubble of silence. Clause pauses are shortened, never deleted.
+
+Measured end to end, the pause before a question went from 9.9s to 0.000s.
 
 **Speech-to-text** is faster-whisper, and the model defaults to `auto`:
 

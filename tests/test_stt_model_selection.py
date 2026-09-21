@@ -91,3 +91,52 @@ def test_suggested_local_models_are_small_enough_for_cpu() -> None:
     assert SUGGESTED_OLLAMA_MODELS
     # Korean is the primary interview language, so a Qwen model leads the list.
     assert SUGGESTED_OLLAMA_MODELS[0].startswith("qwen")
+
+
+# -- config migration --------------------------------------------------------
+
+
+def test_pre_1_1_config_is_migrated_off_the_old_fixed_default(tmp_path) -> None:
+    """Everyone upgrading has the old `small` default written to disk; without
+    a migration they would never reach the device-aware selection."""
+    import json
+
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"stt_model_size": "small"}), encoding="utf-8")
+
+    config = AppConfig.load(path)
+    assert config.stt_model_size == STT_MODEL_AUTO
+    assert config.config_version >= 1
+
+
+def test_a_deliberate_choice_survives_later_loads(tmp_path) -> None:
+    """The migration is one-time: once the marker is written, `small` means
+    the user picked it."""
+    import json
+
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"stt_model_size": "small", "config_version": 1}), encoding="utf-8")
+
+    assert AppConfig.load(path).stt_model_size == "small"
+
+
+def test_migration_does_not_touch_other_explicit_models(tmp_path) -> None:
+    import json
+
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"stt_model_size": "medium"}), encoding="utf-8")
+
+    assert AppConfig.load(path).stt_model_size == "medium"
+
+
+def test_migration_is_idempotent_across_save_and_reload(tmp_path) -> None:
+    import json
+
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"stt_model_size": "small"}), encoding="utf-8")
+
+    migrated = AppConfig.load(path)
+    migrated.stt_model_size = "small"  # user now picks it deliberately
+    migrated.save()
+
+    assert AppConfig.load(path).stt_model_size == "small"

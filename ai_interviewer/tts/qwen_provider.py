@@ -30,6 +30,24 @@ class TTSProviderError(RuntimeError):
     pass
 
 
+# Silence tightening. A frame counts as silent below this fraction of the
+# utterance's peak energy; the edges keep a short breath, and an internal gap
+# is capped rather than removed so clause pauses survive.
+_SILENCE_RATIO = 0.06
+_EDGE_PAD_MS = 60
+_MAX_INTERNAL_GAP_MS = 220
+
+
+def _shrink_gap(keep: Any, start: int, stop: int, max_frames: int) -> None:
+    """Mark the middle of an over-long silent run for removal."""
+    length = stop - start
+    if length <= max_frames:
+        return
+    drop = length - max_frames
+    offset = (length - drop) // 2
+    keep[start + offset : start + offset + drop] = False
+
+
 @contextlib.contextmanager
 def _suppress_noisy_native_output():
     stdout_fd = stderr_fd = None
@@ -190,6 +208,62 @@ class QwenTTSProvider:
             logger.warning(self._last_warning)
             return self._synthesize_with_windows_sapi(fallback_path, text, language)
 
+    @staticmethod
+    def tighten_speech(audio: Any, rate: int) -> Any:
+        """Strip the dead air the model leaves around and inside an utterance.
+
+        Qwen3-TTS pads each generation with roughly 0.5-1.0s of silence at the
+        start and end, and occasionally drops a half-second gap mid-sentence.
+        Played back one question at a time that padding is most of what the
+        listener hears between questions, and it makes each question land as an
+        isolated item being read out rather than a sentence being spoken.
+
+        Leading and trailing silence is cut to a short breath, and an internal
+        gap is shortened rather than removed, because real speech does pause at
+        a clause boundary — it just does not stop dead.
+        """
+        import numpy as np
+
+        samples = np.asarray(audio, dtype="float32").reshape(-1)
+        if samples.size == 0:
+            return samples
+
+        frame = max(1, rate // 100)  # 10 ms resolution
+        usable = samples.size // frame * frame
+        if usable < frame * 2:
+            return samples
+        energy = np.sqrt((samples[:usable].reshape(-1, frame) ** 2).mean(axis=1))
+        peak = float(energy.max())
+        if peak <= 0:
+            return samples
+        quiet = energy < max(peak * _SILENCE_RATIO, 1e-4)
+
+        voiced = np.flatnonzero(~quiet)
+        if voiced.size == 0:
+            return samples
+
+        pad = max(1, int(_EDGE_PAD_MS / 10))
+        first = max(0, int(voiced[0]) - pad)
+        last = min(len(quiet) - 1, int(voiced[-1]) + pad)
+
+        keep = np.ones(last - first + 1, dtype=bool)
+        max_gap = max(1, int(_MAX_INTERNAL_GAP_MS / 10))
+        run_start: int | None = None
+        for index in range(keep.size):
+            if quiet[first + index]:
+                run_start = index if run_start is None else run_start
+                continue
+            if run_start is not None:
+                _shrink_gap(keep, run_start, index, max_gap)
+                run_start = None
+        if run_start is not None:
+            _shrink_gap(keep, run_start, keep.size, max_gap)
+
+        selected = np.repeat(keep, frame)
+        window = samples[first * frame : (last + 1) * frame]
+        trimmed = window[: selected.size][selected[: window.size]]
+        return trimmed if trimmed.size else samples
+
     def _synthesize_with_qwen(self, wav_path: Path, text: str, language: str, speaker: str) -> Path:
         model = self._load_model()
         try:
@@ -209,7 +283,7 @@ class QwenTTSProvider:
         except ImportError as exc:  # pragma: no cover - dependency error path
             raise TTSProviderError("Missing dependency: install soundfile to save generated audio.") from exc
 
-        sf.write(str(wav_path), wavs[0], sample_rate, subtype="PCM_16")
+        sf.write(str(wav_path), self.tighten_speech(wavs[0], sample_rate), sample_rate, subtype="PCM_16")
         if not wav_path.exists() or wav_path.stat().st_size == 0:
             raise TTSProviderError(f"Generated audio file is empty: {wav_path}")
         return wav_path
@@ -269,16 +343,30 @@ class QwenTTSProvider:
             except Exception as exc:
                 results.append(f"CUDA check: ERROR - {exc}")
         if self.config.tts_backend == QWEN_BACKEND:
-            tone_state = "ON" if self.config.supports_style_instruction() else "IGNORED by 0.6B model"
-            results.append(f"Interviewer tone instruction: {tone_state}")
+            results.append(
+                "Interviewer tone instruction: ON"
+                if self._style_instruction()
+                else "Interviewer tone instruction: OFF (none configured)"
+            )
+            results.append(
+                f"Silence tightening: edges {_EDGE_PAD_MS}ms, internal gap cap {_MAX_INTERNAL_GAP_MS}ms"
+            )
         results.append(f"Selected backend: {self.config.tts_backend}")
         results.append(f"Windows SAPI fallback: {'ON' if self.config.enable_windows_sapi_fallback else 'OFF'}")
         return results
 
     def _style_instruction(self) -> str | None:
-        if not self.config.supports_style_instruction():
-            return None
-        return self.config.default_instruct
+        """The interviewer's delivery instruction, sent on every model size.
+
+        Qwen3-TTS steers timbre, rhythm, and emphasis through this natural
+        language instruction — there is no SSML — so it is the only prosody
+        control the app has. It used to be withheld from the 0.6B model on the
+        assumption that the small model ignored it; measured against the same
+        sentence, 0.6B output changes materially with the instruction applied
+        (duration and energy both move), so withholding it was simply removing
+        the one lever that makes the voice sound deliberate rather than read.
+        """
+        return self.config.default_instruct or None
 
     def _resolve_runtime(self, torch: Any) -> tuple[str, str]:
         device_map = self.config.device_map
@@ -385,10 +473,18 @@ class QwenTTSProvider:
         return self._model
 
     def _cache_path(self, cache_key: str, text: str, language: str, speaker: str) -> Path:
+        # Content-addressed: everything that changes the audio is in the digest,
+        # and nothing that does not. cache_key identifies the question for the
+        # caller but is deliberately excluded, so the same question spoken in the
+        # same voice is synthesised once and reused across sessions.
         digest = hashlib.sha256(
             (
                 f"{self.config.model_id}|{language}|{speaker}|{self._style_instruction()}|"
-                f"{self.config.max_new_tokens}|{text}|{cache_key}"
+                f"{self.config.max_new_tokens}|{text}|"
+                # Post-processing shapes the stored audio too, so it belongs in
+                # the key: changing it must retire the clips it no longer
+                # matches instead of serving them forever.
+                f"tighten:{_SILENCE_RATIO}:{_EDGE_PAD_MS}:{_MAX_INTERNAL_GAP_MS}"
             ).encode("utf-8")
         ).hexdigest()[:20]
         safe_speaker = "".join(ch if ch.isalnum() else "_" for ch in speaker)
@@ -396,7 +492,7 @@ class QwenTTSProvider:
 
     def _fallback_cache_path(self, cache_key: str, text: str, language: str, speaker: str) -> Path:
         digest = hashlib.sha256(
-            f"windows-sapi|{language}|{speaker}|{text}|{cache_key}".encode("utf-8")
+            f"windows-sapi|{language}|{speaker}|{text}".encode("utf-8")
         ).hexdigest()[:20]
         return self.cache_dir / f"{digest}_{language}_WindowsSAPI.wav"
 

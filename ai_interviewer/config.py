@@ -47,6 +47,10 @@ SUPPORTED_AI_EFFORTS = ("low", "medium", "high")
 #   large-v3-turbo  3.4x realtime (CPU)   23.8x (CUDA)  best accuracy
 # distil-* checkpoints are deliberately absent: they are English-only and
 # silently translate Korean speech into English rather than transcribing it.
+# Bumped when a stored config needs rewriting rather than just defaulting.
+# 0 = pre-1.1 (no marker written), 1 = device-aware speech-to-text.
+CONFIG_VERSION = 1
+
 STT_MODEL_AUTO = "auto"
 STT_MODEL_CUDA_DEFAULT = "large-v3-turbo"
 STT_MODEL_CPU_DEFAULT = "small"
@@ -116,6 +120,17 @@ def default_sessions_root() -> Path:
     return documents_dir() / APP_NAME / "sessions"
 
 
+def default_tts_cache_dir() -> Path:
+    """Shared voice cache, deliberately not inside a session folder.
+
+    Synthesised question audio depends only on the model, voice, and text — not
+    on which session asked it. Keeping one cache lets the app generate the first
+    question during setup, before a session exists, and lets a repeated question
+    pack play back instantly instead of being re-synthesised every run.
+    """
+    return app_data_dir() / "tts_cache"
+
+
 def default_video_path() -> Path:
     return application_base_dir() / "assets" / "interviewer.mp4"
 
@@ -166,10 +181,18 @@ class AppConfig:
     question_set_name: str = "기본 인성 면접"
     korean_speaker: str = "Sohee"
     english_speaker: str = "Ryan"
+    # Qwen3-TTS steers rhythm and emphasis through this natural-language
+    # instruction (it has no SSML), so the wording is the prosody control.
+    # It leads with continuity because the failure mode worth preventing is
+    # word-by-word recitation, not the wrong emotion.
     default_instruct: str = (
-        "Act as a calm, courteous, senior professional interviewer. "
-        "Speak with a steady pace, neutral confidence, clear pronunciation, and a respectful interview-room tone. "
-        "Do not sound playful, theatrical, overly excited, or like a casual assistant."
+        "You are a senior interviewer asking a candidate a question in a quiet room. "
+        "Speak the whole question as one connected, flowing sentence, the way a person actually talks: "
+        "let the phrase carry through without breaking between words, and put the natural emphasis "
+        "on the part of the question that matters, with a gentle lift at the end. "
+        "Keep the tone calm, warm, and professional, at an unhurried conversational pace. "
+        "Do not recite word by word, do not pause between every word, and do not sound flat, "
+        "theatrical, or like a machine reading a list."
     )
     device_map: str = "auto"
     torch_dtype: str = "auto"
@@ -204,6 +227,7 @@ class AppConfig:
     # simply fall back to the default here.
     ui_theme_mode: str = "system"
     ui_language: str = ""
+    config_version: int = CONFIG_VERSION
     setup_completed: bool = False
     interview_type: str = "hr"
     selected_speaker: str = "Sohee"
@@ -267,8 +291,24 @@ class AppConfig:
         config.tts_backend = LEGACY_TTS_BACKEND_VALUES.get(config.tts_backend, config.tts_backend)
         if config.ui_theme_mode not in {"system", "light", "dark"}:
             config.ui_theme_mode = "system"
+        config._migrate_from(int(payload.get("config_version", 0) or 0))
         config.normalize_ai_settings(payload)
         return config
+
+    def _migrate_from(self, stored_version: int) -> None:
+        """Rewrite settings that a shipped default changed under the user.
+
+        Only runs once per upgrade, gated on the version marker: a value the
+        user actually chose is left alone on every later load.
+        """
+        if stored_version < 1:
+            # 1.1 replaced the fixed "small" transcription model with a
+            # device-aware "auto". Everyone upgrading has the old default
+            # written into their config, so without this they would silently
+            # keep `small` on a GPU that can run the far better turbo model.
+            if self.stt_model_size == "small":
+                self.stt_model_size = STT_MODEL_AUTO
+        self.config_version = CONFIG_VERSION
 
     def normalize_ai_settings(self, payload: dict[str, Any] | None = None) -> None:
         """Clamp the analysis settings and carry the pre-1.1 config forward."""

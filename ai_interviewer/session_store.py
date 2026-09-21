@@ -200,7 +200,6 @@ class InterviewSession:
             role=role,
         )
         session.session_dir.mkdir(parents=True, exist_ok=True)
-        session.audio_cache_dir.mkdir(parents=True, exist_ok=True)
         session.save()
         return session
 
@@ -210,6 +209,13 @@ class InterviewSession:
 
     @property
     def audio_cache_dir(self) -> Path:
+        """Where sessions written before 1.1 kept their synthesised question audio.
+
+        Question audio now lives in one shared, content-addressed cache
+        (`config.default_tts_cache_dir`) so it survives across sessions. The
+        path is kept so an old session folder still reads correctly; new
+        sessions no longer create it.
+        """
         return self.session_dir / "audio_cache"
 
     @property
@@ -366,7 +372,6 @@ class InterviewSession:
     def save(self) -> None:
         with self._lock:
             self.session_dir.mkdir(parents=True, exist_ok=True)
-            self.audio_cache_dir.mkdir(parents=True, exist_ok=True)
             self.answers_dir.mkdir(parents=True, exist_ok=True)
             rows = [record.export_row(self.session_id) for record in self.records]
 
