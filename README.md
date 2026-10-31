@@ -35,7 +35,7 @@ of creating `.venv`.
 
 ```cmd
 conda activate torch251
-cd /d C:\bongkj\Projects\AI_Interview
+cd /d <project-folder>
 python -m pip install -r requirements-qwen.txt
 pythonw -m ai_interviewer
 ```
